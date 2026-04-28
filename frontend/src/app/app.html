@@ -1,178 +1,178 @@
 <main class="app-shell">
   @if (!hasGameRoute()) {
     <section class="empty-route">
-      <p class="eyebrow">Trivia beta</p>
+      <p class="eyebrow">Ronda de Juegos</p>
       <h1>Nada por aqui</h1>
-      <p class="muted">Entrá con el link de una partida, por ejemplo /cumple-abril.</p>
+      <p class="muted">Entra con el link de una partida, por ejemplo /cumple-abril.</p>
     </section>
   } @else {
-  <section class="topbar">
-    <div>
-      <p class="eyebrow">{{ viewMode() === 'host' ? 'Host' : 'Jugador' }} · {{ gameId() }}</p>
-      <h1>{{ state().title }}</h1>
-    </div>
-  </section>
+    <section class="topbar">
+      <div>
+        <p class="eyebrow">{{ viewMode() === 'host' ? 'Host' : 'Jugador' }} · {{ gameId() }}</p>
+        <h1>{{ state().title }}</h1>
+      </div>
+    </section>
 
-  <section class="status-strip">
-    <div>
-      <span>Codigo</span>
-      <strong>{{ state().code }}</strong>
-    </div>
-    <div>
-      <span>Estado</span>
-      <strong>{{ state().phase }}</strong>
-    </div>
-    <div>
-      <span>Listos</span>
-      <strong>{{ readyCount() }}/{{ state().players.length }}</strong>
-    </div>
-  </section>
+    <section class="status-strip">
+      <div>
+        <span>Codigo</span>
+        <strong>{{ state().code }}</strong>
+      </div>
+      <div>
+        <span>Estado</span>
+        <strong>{{ state().phase }}</strong>
+      </div>
+      <div>
+        <span>Listos</span>
+        <strong>{{ readyCount() }}/{{ state().players.length }}</strong>
+      </div>
+    </section>
 
-  @if (viewMode() === 'host') {
-    <section class="workspace host-grid">
-      <article class="panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">Sala</p>
-            <h2>Control de partida</h2>
+    @if (viewMode() === 'host') {
+      <section class="workspace host-grid">
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Sala</p>
+              <h2>Control de partida</h2>
+            </div>
+            <button type="button" class="ghost" (click)="resetGame()">Reset</button>
           </div>
-          <button type="button" class="ghost" (click)="resetGame()">Reset</button>
-        </div>
 
-        <div class="config-box">
-          @if (loadStatus() === 'loading') {
-            <p class="muted">Cargando partida desde Google Sheets...</p>
-          } @else if (loadStatus() === 'loaded') {
-            <p class="success">Preguntas cargadas desde la tab {{ gameId() }}.</p>
-          } @else if (loadStatus() === 'error') {
-            <p class="error">{{ loadError() }}</p>
-          }
-        </div>
-
-        <div class="qr-box">
-          <div class="qr-mock" aria-label="QR mock"></div>
-          <div>
-            <p class="join-url">/{{ state().code }}</p>
-            <p class="muted">El jugador entra a /{{ state().code }}. Esta vista usa /{{ state().code }}/PIN.</p>
+          <div class="config-box">
+            @if (loadStatus() === 'loading') {
+              <p class="muted">Conectando con la partida...</p>
+            } @else if (loadStatus() === 'loaded') {
+              <p class="success">Partida lista desde la tab {{ gameId() }}.</p>
+            } @else if (loadStatus() === 'error') {
+              <p class="error">{{ loadError() }}</p>
+            }
           </div>
-        </div>
 
-        <div class="actions">
-          <button type="button" class="primary" [disabled]="state().phase !== 'lobby'" (click)="startGame()">
-            Iniciar
-          </button>
-          <button type="button" [disabled]="state().phase !== 'question'" (click)="simulateAnswers()">
-            Simular respuestas
-          </button>
-          <button type="button" [disabled]="state().phase !== 'question'" (click)="showResults()">
-            Cerrar pregunta
-          </button>
-          <button type="button" [disabled]="state().phase !== 'results'" (click)="nextQuestion()">
-            Siguiente
-          </button>
-        </div>
-      </article>
-
-      <article class="panel">
-        <div class="panel-heading">
-          <div>
-            <p class="eyebrow">Jugadores</p>
-            <h2>Lobby</h2>
+          <div class="qr-box">
+            <div class="qr-mock" aria-label="QR mock"></div>
+            <div>
+              <p class="join-url">/{{ state().code }}</p>
+              <p class="muted">El jugador entra a /{{ state().code }}. Esta vista usa /{{ state().code }}/PIN.</p>
+            </div>
           </div>
-        </div>
 
-        <div class="player-list">
-          @for (player of state().players; track trackPlayer($index, player)) {
-            <div class="player-row">
-              <span class="avatar">{{ player.name.slice(0, 1).toUpperCase() }}</span>
-              <div>
-                <strong>{{ player.name }}</strong>
-                <span>{{ player.isReady ? 'Listo' : 'Esperando' }}</span>
+          <div class="actions">
+            <button type="button" class="primary" [disabled]="state().phase !== 'lobby'" (click)="startGame()">
+              Iniciar
+            </button>
+            <button type="button" [disabled]="state().phase !== 'question'" (click)="showResults()">
+              Cerrar pregunta
+            </button>
+            <button type="button" [disabled]="state().phase !== 'results'" (click)="nextQuestion()">
+              Siguiente
+            </button>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Jugadores</p>
+              <h2>Lobby</h2>
+            </div>
+          </div>
+
+          <div class="player-list">
+            @for (player of state().players; track trackPlayer($index, player)) {
+              <div class="player-row">
+                <span class="avatar">{{ player.name.slice(0, 1).toUpperCase() }}</span>
+                <div>
+                  <strong>{{ player.name }}</strong>
+                  <span>{{ player.connected === false ? 'Desconectado' : player.isReady ? 'Listo' : 'Esperando' }}</span>
+                </div>
               </div>
-              <button type="button" class="small" [disabled]="player.isReady" (click)="markReady(player.id)">
-                OK
-              </button>
-            </div>
-          }
-        </div>
-      </article>
-    </section>
-  } @else {
-    <section class="workspace player-workspace">
-      @if (!player()) {
-        <article class="panel join-panel">
-          <p class="eyebrow">Entrar a sala {{ state().code }}</p>
-          <h2>Elegir nombre</h2>
-          <label>
-            Nombre
-            <input type="text" [ngModel]="playerName()" (ngModelChange)="playerName.set($event)" maxlength="18" />
-          </label>
-          <button type="button" class="primary full" (click)="joinAsPlayer()">Entrar listo</button>
-        </article>
-      } @else {
-        <article class="player-card">
-          <span class="avatar">{{ player()?.name?.slice(0, 1)?.toUpperCase() }}</span>
-          <div>
-            <strong>{{ player()?.name }}</strong>
-            <span>{{ player()?.score }} pts</span>
+            }
           </div>
         </article>
-      }
-    </section>
-  }
-
-  @if (state().phase === 'question') {
-    <section class="question-stage">
-      <div class="question-meta">
-        <span>Pregunta {{ state().currentQuestionIndex + 1 }} de {{ state().questions.length }}</span>
-        <strong>{{ timeLeft() }}s</strong>
-      </div>
-      <div class="timer-bar"><span [style.width.%]="progress()"></span></div>
-      <h2>{{ currentQuestion().text }}</h2>
-
-      <div class="options-grid">
-        @for (option of currentQuestion().options; track option; let index = $index) {
-          <button
-            type="button"
-            [class.selected]="selectedOption() === index"
-            [disabled]="viewMode() !== 'player' || !player() || !!player()?.lastAnswer"
-            (click)="submitAnswer(index)"
-          >
-            <span>{{ 'ABCD'[index] }}</span>
-            {{ option }}
-          </button>
-        }
-      </div>
-    </section>
-  }
-
-  @if (state().phase === 'results' || state().phase === 'finished') {
-    <section class="workspace results-grid">
-      <article class="panel">
-        <p class="eyebrow">{{ state().phase === 'finished' ? 'Final' : 'Resultados' }}</p>
-        <h2>Ranking</h2>
-
-        <div class="ranking-list">
-          @for (player of sortedPlayers(); track trackPlayer($index, player); let index = $index) {
-            <div class="rank-row">
-              <span class="rank">{{ index + 1 }}</span>
-              <strong>{{ player.name }}</strong>
-              <span>{{ player.score }} pts</span>
+      </section>
+    } @else {
+      <section class="workspace player-workspace">
+        @if (!player()) {
+          <article class="panel join-panel">
+            <p class="eyebrow">Entrar a sala {{ state().code }}</p>
+            <h2>Elegir nombre</h2>
+            <label>
+              Nombre
+              <input type="text" [ngModel]="playerName()" (ngModelChange)="playerName.set($event)" maxlength="18" />
+            </label>
+            <button type="button" class="primary full" [disabled]="connectionStatus() !== 'connected'" (click)="joinAsPlayer()">
+              Entrar listo
+            </button>
+          </article>
+        } @else {
+          <article class="player-card">
+            <span class="avatar">{{ player()?.name?.slice(0, 1)?.toUpperCase() }}</span>
+            <div>
+              <strong>{{ player()?.name }}</strong>
+              <span>{{ player()?.score }} pts</span>
             </div>
+          </article>
+        }
+      </section>
+    }
+
+    @if (state().phase === 'question' && currentQuestion(); as question) {
+      <section class="question-stage">
+        <div class="question-meta">
+          <span>Pregunta {{ state().currentQuestionIndex + 1 }} de {{ questionCount() }}</span>
+          <strong>{{ timeLeft() }}s</strong>
+        </div>
+        <div class="timer-bar"><span [style.width.%]="progress()"></span></div>
+        <h2>{{ question.text }}</h2>
+
+        <div class="options-grid">
+          @for (option of question.options; track option; let index = $index) {
+            <button
+              type="button"
+              [class.selected]="selectedOption() === index"
+              [disabled]="viewMode() !== 'player' || !player() || hasAnswered()"
+              (click)="submitAnswer(index)"
+            >
+              <span>{{ 'ABCD'[index] }}</span>
+              {{ option }}
+            </button>
           }
         </div>
-      </article>
+      </section>
+    }
 
-      <article class="panel answer-summary">
-        <p class="eyebrow">Pregunta actual</p>
-        <h2>{{ currentQuestion().text }}</h2>
-        <p class="correct">Correcta: {{ currentQuestion().options[currentQuestion().correctIndex] }}</p>
+    @if (state().phase === 'results' || state().phase === 'finished') {
+      <section class="workspace results-grid">
+        <article class="panel">
+          <p class="eyebrow">{{ state().phase === 'finished' ? 'Final' : 'Resultados' }}</p>
+          <h2>Ranking</h2>
 
-        @if (state().phase !== 'finished') {
-          <button type="button" class="primary full" (click)="nextQuestion()">Continuar</button>
+          <div class="ranking-list">
+            @for (player of sortedPlayers(); track trackPlayer($index, player); let index = $index) {
+              <div class="rank-row">
+                <span class="rank">{{ index + 1 }}</span>
+                <strong>{{ player.name }}</strong>
+                <span>{{ player.score }} pts</span>
+              </div>
+            }
+          </div>
+        </article>
+
+        @if (currentQuestion(); as resultQuestion) {
+          <article class="panel answer-summary">
+            <p class="eyebrow">Pregunta actual</p>
+            <h2>{{ resultQuestion.text }}</h2>
+            @if (viewMode() === 'host' && resultQuestion.correctIndex !== undefined) {
+              <p class="correct">Correcta: {{ resultQuestion.options[resultQuestion.correctIndex] }}</p>
+            }
+
+            @if (viewMode() === 'host' && state().phase !== 'finished') {
+              <button type="button" class="primary full" (click)="nextQuestion()">Continuar</button>
+            }
+          </article>
         }
-      </article>
-    </section>
-  }
+      </section>
+    }
   }
 </main>

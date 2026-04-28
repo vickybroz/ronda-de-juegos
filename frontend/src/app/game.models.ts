@@ -5,6 +5,7 @@ export interface Player {
   name: string;
   score: number;
   isReady: boolean;
+  connected?: boolean;
   lastAnswer?: PlayerAnswer;
 }
 
@@ -12,8 +13,10 @@ export interface Question {
   id: string;
   text: string;
   options: string[];
-  correctIndex: number;
+  correctIndex?: number;
   timeLimit: number;
+  category?: string;
+  difficulty?: string;
 }
 
 export interface PlayerAnswer {
@@ -25,6 +28,7 @@ export interface PlayerAnswer {
 }
 
 export interface GameState {
+  gameId?: string;
   code: string;
   title: string;
   phase: GamePhase;
@@ -32,4 +36,7 @@ export interface GameState {
   questions: Question[];
   currentQuestionIndex: number;
   questionStartedAt: number | null;
+  questionCount?: number;
+  currentQuestion?: Question | null;
+  answers?: PlayerAnswer[];
 }

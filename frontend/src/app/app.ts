@@ -1,11 +1,8 @@
 import { Component, computed, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { fetchGameFromAppsScript } from './apps-script-client';
-import { calculateScore, createInitialGameState } from './mock-game';
-import { Player, Question } from './game.models';
-
-const APPS_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbys-w2lJL0xjvdslAl4d0-y8YCinBrwjSW6LiKmCdNIEZMFIkkQMNMNgM_f47c-kO-X/exec';
+import { ConnectionStatus, GameClient } from './game-client';
+import { createInitialGameState } from './mock-game';
+import { GameState, Player } from './game.models';
 
 @Component({
   selector: 'app-root',
@@ -25,22 +22,32 @@ export class App implements OnDestroy, OnInit {
   protected readonly hostPin = signal(readHostPinFromRoute());
   protected readonly loadStatus = signal<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   protected readonly loadError = signal('');
+  protected readonly connectionStatus = signal<ConnectionStatus>('idle');
 
+  private client: GameClient | null = null;
   private readonly timer = window.setInterval(() => {
     this.now.set(Date.now());
-    this.autoFinishExpiredQuestion();
   }, 250);
 
   ngOnInit(): void {
-    if (this.viewMode() === 'host') {
-      void this.loadHostGame();
+    if (!this.hasGameRoute()) {
+      return;
     }
+
+    if (this.viewMode() === 'host' && !this.hostPin()) {
+      redirectToDefaultPage();
+      return;
+    }
+
+    this.connect();
   }
 
-  protected readonly currentQuestion = computed(() => {
-    const state = this.state();
-    return state.questions[state.currentQuestionIndex];
-  });
+  ngOnDestroy(): void {
+    window.clearInterval(this.timer);
+    this.client?.close();
+  }
+
+  protected readonly currentQuestion = computed(() => this.state().currentQuestion ?? null);
 
   protected readonly player = computed(() => {
     const id = this.currentPlayerId();
@@ -52,6 +59,8 @@ export class App implements OnDestroy, OnInit {
   );
 
   protected readonly readyCount = computed(() => this.state().players.filter((player) => player.isReady).length);
+
+  protected readonly questionCount = computed(() => this.state().questionCount ?? this.state().questions.length);
 
   protected readonly timeLeft = computed(() => {
     const state = this.state();
@@ -73,194 +82,95 @@ export class App implements OnDestroy, OnInit {
     return Math.max(0, Math.min(100, (this.timeLeft() / question.timeLimit) * 100));
   });
 
-  ngOnDestroy(): void {
-    window.clearInterval(this.timer);
-  }
-
-  private async loadHostGame(): Promise<void> {
-    const pin = this.hostPin().trim();
-
-    if (!pin) {
-      redirectToDefaultPage();
-      return;
-    }
-
-    this.loadStatus.set('loading');
-    this.loadError.set('');
-
-    try {
-      const payload = await fetchGameFromAppsScript(APPS_SCRIPT_URL, this.gameId(), pin);
-      const questions = normalizeQuestions(payload.questions || []);
-
-      if (questions.length === 0) {
-        throw new Error('La tab no tiene preguntas validas.');
-      }
-
-      this.state.update((state) => ({
-        ...state,
-        code: this.gameId(),
-        title: payload.title || state.title,
-        questions,
-        phase: 'lobby',
-        currentQuestionIndex: 0,
-        questionStartedAt: null,
-        players: state.players.map((player) => ({ ...player, score: 0, lastAnswer: undefined }))
-      }));
-      this.selectedOption.set(null);
-      this.loadStatus.set('loaded');
-    } catch (error) {
-      if (shouldRedirectToDefaultPage(error)) {
-        redirectToDefaultPage();
-        return;
-      }
-
-      this.loadStatus.set('error');
-      this.loadError.set(formatLoadError(error));
-    }
-  }
+  protected readonly hasAnswered = computed(() => this.selectedOption() !== null);
 
   protected joinAsPlayer(): void {
     const name = this.playerName().trim() || 'Jugador';
-    const id = crypto.randomUUID();
-
-    this.state.update((state) => ({
-      ...state,
-      players: [...state.players, { id, name, score: 0, isReady: true }]
-    }));
-    this.currentPlayerId.set(id);
-  }
-
-  protected markReady(playerId: string): void {
-    this.state.update((state) => ({
-      ...state,
-      players: state.players.map((player) => (player.id === playerId ? { ...player, isReady: true } : player))
-    }));
+    this.client?.join(name);
   }
 
   protected startGame(): void {
-    this.state.update((state) => ({
-      ...state,
-      phase: 'question',
-      currentQuestionIndex: 0,
-      questionStartedAt: Date.now(),
-      players: state.players.map((player) => ({ ...player, lastAnswer: undefined }))
-    }));
     this.selectedOption.set(null);
+    this.client?.start();
   }
 
   protected submitAnswer(optionIndex: number): void {
-    const player = this.player();
-    const question = this.currentQuestion();
-    const state = this.state();
-    if (!player || !question || state.phase !== 'question' || player.lastAnswer) {
+    if (!this.player() || this.state().phase !== 'question' || this.hasAnswered()) {
       return;
     }
 
-    const responseTimeMs = Date.now() - (state.questionStartedAt ?? Date.now());
-    const isCorrect = optionIndex === question.correctIndex;
-    const score = calculateScore(isCorrect, responseTimeMs, question.timeLimit);
     this.selectedOption.set(optionIndex);
-
-    this.state.update((current) => ({
-      ...current,
-      players: current.players.map((candidate) =>
-        candidate.id === player.id
-          ? {
-              ...candidate,
-              score: candidate.score + score,
-              lastAnswer: {
-                questionId: question.id,
-                optionIndex,
-                isCorrect,
-                responseTimeMs,
-                score
-              }
-            }
-          : candidate
-      )
-    }));
-  }
-
-  protected simulateAnswers(): void {
-    const question = this.currentQuestion();
-    const state = this.state();
-    if (!question || state.phase !== 'question') {
-      return;
-    }
-
-    this.state.update((current) => ({
-      ...current,
-      players: current.players.map((player, index) => {
-        if (player.lastAnswer) {
-          return player;
-        }
-
-        const optionIndex = index % question.options.length;
-        const responseTimeMs = 1800 + index * 900;
-        const isCorrect = optionIndex === question.correctIndex;
-        const score = calculateScore(isCorrect, responseTimeMs, question.timeLimit);
-
-        return {
-          ...player,
-          score: player.score + score,
-          lastAnswer: {
-            questionId: question.id,
-            optionIndex,
-            isCorrect,
-            responseTimeMs,
-            score
-          }
-        };
-      })
-    }));
+    this.client?.answer(optionIndex);
   }
 
   protected showResults(): void {
-    this.state.update((state) => ({
-      ...state,
-      phase: 'results'
-    }));
+    this.client?.showResults();
   }
 
   protected nextQuestion(): void {
-    this.state.update((state) => {
-      const nextIndex = state.currentQuestionIndex + 1;
-      if (nextIndex >= state.questions.length) {
-        return {
-          ...state,
-          phase: 'finished',
-          questionStartedAt: null
-        };
-      }
-
-      return {
-        ...state,
-        phase: 'question',
-        currentQuestionIndex: nextIndex,
-        questionStartedAt: Date.now(),
-        players: state.players.map((player) => ({ ...player, lastAnswer: undefined }))
-      };
-    });
     this.selectedOption.set(null);
+    this.client?.next();
   }
 
   protected resetGame(): void {
-    this.state.set(createInitialGameState(this.gameId()));
-    this.currentPlayerId.set(null);
     this.selectedOption.set(null);
-    this.playerName.set('Vicky');
-    this.loadStatus.set('idle');
-    this.loadError.set('');
+    this.client?.reset();
   }
 
   protected trackPlayer(_: number, player: Player): string {
     return player.id;
   }
 
-  private autoFinishExpiredQuestion(): void {
-    const state = this.state();
-    if (state.phase === 'question' && this.timeLeft() === 0) {
-      this.showResults();
+  private connect(): void {
+    this.loadStatus.set('loading');
+    this.loadError.set('');
+
+    this.client = new GameClient({
+      gameId: this.gameId(),
+      role: this.viewMode(),
+      pin: this.hostPin(),
+      onState: (state) => this.applyServerState(state),
+      onJoined: (playerId) => this.currentPlayerId.set(playerId),
+      onStatus: (status) => this.applyConnectionStatus(status)
+    });
+    this.client.connect();
+  }
+
+  private applyServerState(serverState: GameState): void {
+    this.state.set({
+      ...createInitialGameState(this.gameId()),
+      ...serverState,
+      code: serverState.code || serverState.gameId || this.gameId(),
+      questions: serverState.currentQuestion ? [serverState.currentQuestion] : []
+    } as GameState);
+    this.loadStatus.set('loaded');
+
+    if (serverState.phase !== 'question') {
+      this.selectedOption.set(null);
+    }
+  }
+
+  private applyConnectionStatus(status: ConnectionStatus): void {
+    this.connectionStatus.set(status);
+
+    if (status === 'connecting') {
+      this.loadStatus.set('loading');
+      return;
+    }
+
+    if (status === 'connected') {
+      this.loadStatus.set('loaded');
+      return;
+    }
+
+    if (status === 'error') {
+      if (this.viewMode() === 'host') {
+        redirectToDefaultPage();
+        return;
+      }
+
+      this.loadStatus.set('error');
+      this.loadError.set('No se pudo conectar con la partida.');
     }
   }
 }
@@ -276,37 +186,6 @@ function hasRouteGameId(): boolean {
 
 function readHostPinFromRoute(): string {
   return window.location.pathname.split('/').filter(Boolean)[1] || '';
-}
-
-function normalizeQuestions(questions: Question[]): Question[] {
-  return questions.map((question, index) => ({
-    ...question,
-    id: question.id || `q${index + 1}`,
-    timeLimit: Number(question.timeLimit || 15)
-  }));
-}
-
-function formatLoadError(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-
-  if (message === 'INVALID_PIN') {
-    return 'PIN incorrecto.';
-  }
-
-  if (message === 'GAME_NOT_FOUND') {
-    return 'No existe una tab con ese codigo de partida.';
-  }
-
-  if (message === 'INVALID_GAME_ID') {
-    return 'El codigo de partida solo puede usar minusculas, numeros y guiones.';
-  }
-
-  return message;
-}
-
-function shouldRedirectToDefaultPage(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return ['INVALID_PIN', 'GAME_NOT_FOUND', 'INVALID_GAME_ID', 'MISSING_GAME_ID'].includes(message);
 }
 
 function redirectToDefaultPage(): void {
