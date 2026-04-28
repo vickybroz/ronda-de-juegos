@@ -33,10 +33,10 @@ export const mockPlayers: Player[] = [
 export function createInitialGameState(gameId = 'demo'): GameState {
   return {
     code: gameId,
-    title: 'Trivia beta',
+    title: 'Ronda de Juegos',
     phase: 'lobby',
-    players: [...mockPlayers],
-    questions: mockQuestions,
+    players: [],
+    questions: [],
     currentQuestionIndex: 0,
     questionStartedAt: null
   };
