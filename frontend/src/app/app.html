@@ -70,12 +70,6 @@
             <button type="button" class="primary" [disabled]="state().phase !== 'lobby'" (click)="startGame()">
               Iniciar
             </button>
-            <button type="button" [disabled]="state().phase !== 'question'" (click)="showResults()">
-              Cerrar pregunta
-            </button>
-            <button type="button" [disabled]="state().phase !== 'results'" (click)="nextQuestion()">
-              Siguiente
-            </button>
           </div>
         </article>
 
@@ -185,9 +179,7 @@
               <p class="correct">Correcta: {{ resultQuestion.options[resultQuestion.correctIndex] }}</p>
             }
 
-            @if (viewMode() === 'host' && state().phase !== 'finished') {
-              <button type="button" class="primary full" (click)="nextQuestion()">Continuar</button>
-            }
+            <p class="muted">La siguiente pregunta avanza automaticamente.</p>
           </article>
         }
       </section>

@@ -37,6 +37,7 @@ export interface GameState {
   questions: Question[];
   currentQuestionIndex: number;
   questionStartedAt: number | null;
+  resultsShownAt?: number | null;
   questionCount?: number;
   currentQuestion?: Question | null;
   answers?: PlayerAnswer[];

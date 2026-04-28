@@ -1,1 +1,1 @@
-export const APP_VERSION = 'front-d4424b8';
+export const APP_VERSION = 'front-local';

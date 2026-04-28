@@ -62,6 +62,7 @@ interface SessionState {
   questions: Question[];
   currentQuestionIndex: number;
   questionStartedAt: number | null;
+  resultsShownAt: number | null;
   players: Player[];
   answers: PlayerAnswer[];
 }
@@ -75,6 +76,7 @@ interface SocketMeta {
 
 const DEFAULT_TITLE = 'Ronda de Juegos';
 const WORKER_VERSION = 'worker-v0.4.2-ebe43ad';
+const RESULT_DISPLAY_MS = 5000;
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -172,6 +174,7 @@ export class GameRoom {
       questions: loaded.questions || [],
       currentQuestionIndex: existingSession?.currentQuestionIndex || 0,
       questionStartedAt: existingSession?.questionStartedAt || null,
+      resultsShownAt: existingSession?.resultsShownAt || null,
       players: existingSession?.players || [],
       answers: existingSession?.answers || []
     };
@@ -190,6 +193,7 @@ export class GameRoom {
       questions: [],
       currentQuestionIndex: 0,
       questionStartedAt: null,
+      resultsShownAt: null,
       players: [],
       answers: []
     };
@@ -229,10 +233,6 @@ export class GameRoom {
 
     if (message.type === 'start') {
       this.start();
-    } else if (message.type === 'showResults') {
-      this.showResults();
-    } else if (message.type === 'next') {
-      this.next();
     } else if (message.type === 'reset') {
       this.reset();
     } else if (message.type === 'reload') {
@@ -302,8 +302,10 @@ export class GameRoom {
     this.session.phase = 'question';
     this.session.currentQuestionIndex = 0;
     this.session.questionStartedAt = Date.now();
+    this.session.resultsShownAt = null;
     this.session.answers = [];
     this.broadcastState();
+    this.scheduleQuestionTimeout();
   }
 
   private showResults(): void {
@@ -312,7 +314,9 @@ export class GameRoom {
     }
 
     this.session.phase = 'results';
+    this.session.resultsShownAt = Date.now();
     this.broadcastState();
+    this.scheduleNextQuestion();
   }
 
   private next(): void {
@@ -324,13 +328,19 @@ export class GameRoom {
     if (nextIndex >= this.session.questions.length) {
       this.session.phase = 'finished';
       this.session.questionStartedAt = null;
+      this.session.resultsShownAt = null;
     } else {
       this.session.phase = 'question';
       this.session.currentQuestionIndex = nextIndex;
       this.session.questionStartedAt = Date.now();
+      this.session.resultsShownAt = null;
     }
 
     this.broadcastState();
+
+    if (this.session.phase === 'question') {
+      this.scheduleQuestionTimeout();
+    }
   }
 
   private reset(): void {
@@ -341,6 +351,7 @@ export class GameRoom {
     this.session.phase = 'lobby';
     this.session.currentQuestionIndex = 0;
     this.session.questionStartedAt = null;
+    this.session.resultsShownAt = null;
     this.session.answers = [];
     this.session.players = this.session.players.map((player) => ({ ...player, score: 0, isReady: false }));
     this.broadcastState();
@@ -361,6 +372,7 @@ export class GameRoom {
         questions: loaded.questions || [],
         currentQuestionIndex: 0,
         questionStartedAt: null,
+        resultsShownAt: null,
         players: [],
         answers: []
       };
@@ -434,9 +446,50 @@ export class GameRoom {
       currentQuestionIndex: this.session.currentQuestionIndex,
       questionCount: this.session.questions.length,
       questionStartedAt: this.session.questionStartedAt,
+      resultsShownAt: this.session.resultsShownAt,
       currentQuestion: question ? publicQuestion(question, role) : null,
       answers: role === 'host' ? this.session.answers : undefined
     };
+  }
+
+  private scheduleQuestionTimeout(): void {
+    const session = this.session;
+    const question = session?.questions[session.currentQuestionIndex];
+    const questionStartedAt = session?.questionStartedAt;
+
+    if (!session || !question || !questionStartedAt) {
+      return;
+    }
+
+    const delayMs = Math.max(0, question.timeLimit * 1000);
+    this.state.waitUntil(
+      scheduler.wait(delayMs).then(() => {
+        if (
+          this.session?.phase === 'question' &&
+          this.session.currentQuestionIndex === session.currentQuestionIndex &&
+          this.session.questionStartedAt === questionStartedAt
+        ) {
+          this.showResults();
+        }
+      })
+    );
+  }
+
+  private scheduleNextQuestion(): void {
+    const session = this.session;
+    const resultsShownAt = session?.resultsShownAt;
+
+    if (!session || !resultsShownAt) {
+      return;
+    }
+
+    this.state.waitUntil(
+      scheduler.wait(RESULT_DISPLAY_MS).then(() => {
+        if (this.session?.phase === 'results' && this.session.resultsShownAt === resultsShownAt) {
+          this.next();
+        }
+      })
+    );
   }
 
   private broadcastState(): void {
