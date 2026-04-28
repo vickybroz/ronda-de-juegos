@@ -64,6 +64,10 @@ export class GameClient {
     this.send({ type: 'next' });
   }
 
+  finish(): void {
+    this.send({ type: 'finish' });
+  }
+
   reset(): void {
     this.send({ type: 'reset' });
   }

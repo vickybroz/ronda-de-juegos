@@ -70,6 +70,15 @@
             <button type="button" class="primary" [disabled]="state().phase !== 'lobby'" (click)="startGame()">
               Iniciar
             </button>
+            <button type="button" [disabled]="state().phase !== 'question'" (click)="showResults()">
+              Ver resultado
+            </button>
+            <button type="button" [disabled]="state().phase !== 'question' && state().phase !== 'results'" (click)="nextQuestion()">
+              Siguiente
+            </button>
+            <button type="button" [disabled]="state().phase === 'finished' || state().phase === 'lobby'" (click)="finishGame()">
+              Terminar
+            </button>
           </div>
         </article>
 
@@ -179,7 +188,7 @@
               <p class="correct">Correcta: {{ resultQuestion.options[resultQuestion.correctIndex] }}</p>
             }
 
-            <p class="muted">La siguiente pregunta avanza automaticamente.</p>
+            <p class="muted">La siguiente pregunta avanza automaticamente, o el host puede saltar manualmente.</p>
           </article>
         }
       </section>

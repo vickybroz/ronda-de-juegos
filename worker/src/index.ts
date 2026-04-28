@@ -233,6 +233,12 @@ export class GameRoom {
 
     if (message.type === 'start') {
       this.start();
+    } else if (message.type === 'showResults') {
+      this.showResults();
+    } else if (message.type === 'next') {
+      this.next();
+    } else if (message.type === 'finish') {
+      this.finish();
     } else if (message.type === 'reset') {
       this.reset();
     } else if (message.type === 'reload') {
@@ -341,6 +347,17 @@ export class GameRoom {
     if (this.session.phase === 'question') {
       this.scheduleQuestionTimeout();
     }
+  }
+
+  private finish(): void {
+    if (!this.session) {
+      return;
+    }
+
+    this.session.phase = 'finished';
+    this.session.questionStartedAt = null;
+    this.session.resultsShownAt = null;
+    this.broadcastState();
   }
 
   private reset(): void {

@@ -115,6 +115,11 @@ export class App implements OnDestroy, OnInit {
     this.client?.next();
   }
 
+  protected finishGame(): void {
+    this.selectedOption.set(null);
+    this.client?.finish();
+  }
+
   protected resetGame(): void {
     this.selectedOption.set(null);
     this.client?.reset();
