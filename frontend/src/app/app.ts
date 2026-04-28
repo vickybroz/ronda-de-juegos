@@ -11,7 +11,7 @@ import { GameState, Player } from './game.models';
   styleUrl: './app.scss'
 })
 export class App implements OnDestroy, OnInit {
-  protected readonly appVersion = 'v0.4.1-2709929';
+  protected readonly appVersion = 'front-v0.4.2-ebe43ad';
   protected readonly hasGameRoute = signal(hasRouteGameId());
   protected readonly gameId = signal(readRouteGameId());
   protected readonly viewMode = signal<'host' | 'player'>(readHostPinFromRoute() ? 'host' : 'player');
@@ -24,6 +24,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly loadStatus = signal<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   protected readonly loadError = signal('');
   protected readonly connectionStatus = signal<ConnectionStatus>('idle');
+  protected readonly lastServerEvent = signal('sin eventos');
 
   private client: GameClient | null = null;
   private readonly timer = window.setInterval(() => {
@@ -131,7 +132,10 @@ export class App implements OnDestroy, OnInit {
       role: this.viewMode(),
       pin: this.hostPin(),
       onState: (state) => this.applyServerState(state),
-      onJoined: (playerId) => this.currentPlayerId.set(playerId),
+      onJoined: (playerId) => {
+        this.currentPlayerId.set(playerId);
+        this.lastServerEvent.set(`joined:${playerId.slice(0, 8)}`);
+      },
       onStatus: (status) => this.applyConnectionStatus(status)
     });
     this.client.connect();
@@ -144,6 +148,7 @@ export class App implements OnDestroy, OnInit {
       code: serverState.code || serverState.gameId || this.gameId(),
       questions: serverState.currentQuestion ? [serverState.currentQuestion] : []
     } as GameState);
+    this.lastServerEvent.set(`${serverState.phase} · ${serverState.players.length} jugador(es)`);
     this.loadStatus.set('loaded');
 
     if (serverState.phase !== 'question') {

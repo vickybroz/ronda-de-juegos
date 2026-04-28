@@ -79,6 +79,22 @@ h2 {
   gap: 8px;
 }
 
+.debug-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #657066;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.debug-strip span {
+  padding: 6px 8px;
+  border: 1px solid #d9ded4;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
 .status-strip div,
 .panel,
 .question-stage,

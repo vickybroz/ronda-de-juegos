@@ -29,6 +29,7 @@ export interface PlayerAnswer {
 
 export interface GameState {
   gameId?: string;
+  version?: string;
   code: string;
   title: string;
   phase: GamePhase;

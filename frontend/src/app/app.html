@@ -13,7 +13,7 @@
       </div>
     </section>
 
-    <section class="status-strip">
+  <section class="status-strip">
       <div>
         <span>Codigo</span>
         <strong>{{ state().code }}</strong>
@@ -22,11 +22,17 @@
         <span>Estado</span>
         <strong>{{ state().phase }}</strong>
       </div>
-      <div>
-        <span>Listos</span>
-        <strong>{{ readyCount() }}/{{ state().players.length }}</strong>
-      </div>
-    </section>
+    <div>
+      <span>Listos</span>
+      <strong>{{ readyCount() }}/{{ state().players.length }}</strong>
+    </div>
+  </section>
+
+  <section class="debug-strip">
+    <span>Socket: {{ connectionStatus() }}</span>
+    <span>Evento: {{ lastServerEvent() }}</span>
+    <span>Worker: {{ state().version || 'sin version' }}</span>
+  </section>
 
     @if (viewMode() === 'host') {
       <section class="workspace host-grid">

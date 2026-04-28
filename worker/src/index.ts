@@ -72,6 +72,7 @@ interface SocketMeta {
 }
 
 const DEFAULT_TITLE = 'Ronda de Juegos';
+const WORKER_VERSION = 'worker-v0.4.2-ebe43ad';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
@@ -369,6 +370,7 @@ export class GameRoom {
     const question = this.session.questions[this.session.currentQuestionIndex];
     return {
       gameId: this.session.gameId,
+      version: WORKER_VERSION,
       title: this.session.title,
       gameType: this.session.gameType,
       phase: this.session.phase,
