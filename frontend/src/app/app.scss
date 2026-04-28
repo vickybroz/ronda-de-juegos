@@ -154,6 +154,13 @@ h2 {
   gap: 12px;
 }
 
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .qr-box {
   display: grid;
   grid-template-columns: 116px minmax(0, 1fr);

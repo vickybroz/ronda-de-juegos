@@ -119,6 +119,18 @@ export class App implements OnDestroy, OnInit {
     this.client?.reset();
   }
 
+  protected reloadGame(): void {
+    this.selectedOption.set(null);
+    this.currentPlayerId.set(null);
+    this.client?.reload();
+  }
+
+  protected leaveGame(): void {
+    this.selectedOption.set(null);
+    this.currentPlayerId.set(null);
+    this.client?.leave();
+  }
+
   protected trackPlayer(_: number, player: Player): string {
     return player.id;
   }
@@ -133,8 +145,8 @@ export class App implements OnDestroy, OnInit {
       pin: this.hostPin(),
       onState: (state) => this.applyServerState(state),
       onJoined: (playerId) => {
-        this.currentPlayerId.set(playerId);
-        this.lastServerEvent.set(`joined:${playerId.slice(0, 8)}`);
+        this.currentPlayerId.set(playerId || null);
+        this.lastServerEvent.set(playerId ? `joined:${playerId.slice(0, 8)}` : 'left');
       },
       onStatus: (status) => this.applyConnectionStatus(status)
     });

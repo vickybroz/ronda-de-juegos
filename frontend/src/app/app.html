@@ -42,7 +42,10 @@
               <p class="eyebrow">Sala</p>
               <h2>Control de partida</h2>
             </div>
-            <button type="button" class="ghost" (click)="resetGame()">Reset</button>
+            <div class="header-actions">
+              <button type="button" class="ghost" (click)="resetGame()">Reset puntos</button>
+              <button type="button" class="ghost" (click)="reloadGame()">Recargar partida</button>
+            </div>
           </div>
 
           <div class="config-box">
@@ -118,6 +121,7 @@
               <strong>{{ player()?.name }}</strong>
               <span>{{ player()?.score }} pts</span>
             </div>
+            <button type="button" class="small" (click)="leaveGame()">Salir</button>
           </article>
 
           @if (state().phase === 'lobby') {

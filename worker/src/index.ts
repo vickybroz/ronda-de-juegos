@@ -69,6 +69,8 @@ interface SessionState {
 interface SocketMeta {
   role: ClientRole;
   playerId?: string;
+  gameId: string;
+  pin?: string;
 }
 
 const DEFAULT_TITLE = 'Ronda de Juegos';
@@ -134,7 +136,7 @@ export class GameRoom {
     const [client, server] = Object.values(pair);
     server.accept();
 
-    this.sockets.set(server, { role });
+    this.sockets.set(server, { role, gameId, pin });
     server.addEventListener('message', (event) => this.handleMessage(server, event));
     server.addEventListener('close', () => this.handleClose(server));
     server.addEventListener('error', () => this.handleClose(server));
@@ -206,6 +208,11 @@ export class GameRoom {
       return;
     }
 
+    if (message.type === 'leave' && meta.role === 'player') {
+      this.leavePlayer(socket);
+      return;
+    }
+
     if (message.type === 'ready' && meta.role === 'player' && meta.playerId) {
       this.setReady(meta.playerId);
       return;
@@ -228,6 +235,8 @@ export class GameRoom {
       this.next();
     } else if (message.type === 'reset') {
       this.reset();
+    } else if (message.type === 'reload') {
+      void this.reload(meta.gameId, meta.pin || '');
     }
   }
 
@@ -236,9 +245,7 @@ export class GameRoom {
     this.sockets.delete(socket);
 
     if (meta?.playerId && this.session) {
-      this.session.players = this.session.players.map((player) =>
-        player.id === meta.playerId ? { ...player, connected: false } : player
-      );
+      this.session.players = this.session.players.filter((player) => player.id !== meta.playerId);
       this.broadcastState();
     }
   }
@@ -258,8 +265,21 @@ export class GameRoom {
     };
 
     this.session.players = [...this.session.players, player];
-    this.sockets.set(socket, { role: 'player', playerId: player.id });
+    const previousMeta = this.sockets.get(socket);
+    this.sockets.set(socket, { role: 'player', playerId: player.id, gameId: previousMeta?.gameId || this.session.gameId });
     this.send(socket, { type: 'joined', playerId: player.id });
+    this.broadcastState();
+  }
+
+  private leavePlayer(socket: WebSocket): void {
+    const meta = this.sockets.get(socket);
+    if (!meta?.playerId || !this.session) {
+      return;
+    }
+
+    this.session.players = this.session.players.filter((player) => player.id !== meta.playerId);
+    this.sockets.set(socket, { role: 'player', gameId: meta.gameId });
+    this.send(socket, { type: 'left' });
     this.broadcastState();
   }
 
@@ -324,6 +344,42 @@ export class GameRoom {
     this.session.answers = [];
     this.session.players = this.session.players.map((player) => ({ ...player, score: 0, isReady: false }));
     this.broadcastState();
+  }
+
+  private async reload(gameId: string, pin: string): Promise<void> {
+    if (!pin) {
+      return;
+    }
+
+    try {
+      const loaded = await loadGameFromAppsScript(this.env.APPS_SCRIPT_URL, gameId, pin);
+      this.session = {
+        gameId,
+        title: loaded.title || DEFAULT_TITLE,
+        gameType: loaded.gameType || 'multiple_choice',
+        phase: 'lobby',
+        questions: loaded.questions || [],
+        currentQuestionIndex: 0,
+        questionStartedAt: null,
+        players: [],
+        answers: []
+      };
+
+      for (const [socket, meta] of this.sockets) {
+        if (meta.role === 'player') {
+          this.sockets.set(socket, { role: 'player', gameId });
+          this.send(socket, { type: 'left' });
+        }
+      }
+
+      this.broadcastState();
+    } catch (error) {
+      for (const [socket, meta] of this.sockets) {
+        if (meta.role === 'host') {
+          this.send(socket, { type: 'error', error: errorMessage(error) });
+        }
+      }
+    }
   }
 
   private answer(playerId: string, optionIndex: number): void {

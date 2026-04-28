@@ -68,6 +68,14 @@ export class GameClient {
     this.send({ type: 'reset' });
   }
 
+  reload(): void {
+    this.send({ type: 'reload' });
+  }
+
+  leave(): void {
+    this.send({ type: 'leave' });
+  }
+
   answer(optionIndex: number): void {
     this.send({ type: 'answer', optionIndex });
   }
@@ -87,6 +95,10 @@ export class GameClient {
 
     if (payload?.['type'] === 'joined' && typeof payload['playerId'] === 'string') {
       this.options.onJoined(payload['playerId']);
+    }
+
+    if (payload?.['type'] === 'left') {
+      this.options.onJoined('');
     }
   }
 }
