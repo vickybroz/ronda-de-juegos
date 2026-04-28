@@ -71,7 +71,7 @@ interface SocketMeta {
   playerId?: string;
 }
 
-const DEFAULT_TITLE = 'Trivia beta';
+const DEFAULT_TITLE = 'Ronda de Juegos';
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

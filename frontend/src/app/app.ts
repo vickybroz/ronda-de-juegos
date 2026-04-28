@@ -11,6 +11,7 @@ import { GameState, Player } from './game.models';
   styleUrl: './app.scss'
 })
 export class App implements OnDestroy, OnInit {
+  protected readonly appVersion = 'v0.4.1-2709929';
   protected readonly hasGameRoute = signal(hasRouteGameId());
   protected readonly gameId = signal(readRouteGameId());
   protected readonly viewMode = signal<'host' | 'player'>(readHostPinFromRoute() ? 'host' : 'player');

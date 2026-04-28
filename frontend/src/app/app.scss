@@ -346,6 +346,20 @@ input {
   align-content: start;
 }
 
+.version-badge {
+  position: fixed;
+  right: 10px;
+  bottom: 8px;
+  z-index: 10;
+  padding: 5px 8px;
+  border: 1px solid #cfd7cc;
+  border-radius: 8px;
+  color: #657066;
+  font-size: 0.72rem;
+  font-weight: 800;
+  background: rgb(255 255 255 / 88%);
+}
+
 @media (max-width: 760px) {
   .app-shell {
     padding: 12px;
