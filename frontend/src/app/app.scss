@@ -60,6 +60,43 @@ h2 {
   border-radius: 8px;
   color: #1d271f;
   font-weight: 800;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    filter 120ms ease,
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.actions button:not(:disabled):hover,
+.small:not(:disabled):hover,
+.primary:not(:disabled):hover,
+.ghost:not(:disabled):hover,
+.options-grid button:not(:disabled):hover {
+  transform: translateY(-1px);
+  filter: brightness(1.03);
+  box-shadow: 0 8px 18px rgb(41 49 43 / 12%);
+}
+
+.actions button:not(:disabled):active,
+.small:not(:disabled):active,
+.primary:not(:disabled):active,
+.ghost:not(:disabled):active,
+.options-grid button:not(:disabled):active {
+  transform: translateY(1px) scale(0.99);
+  filter: brightness(0.96);
+  box-shadow: 0 3px 8px rgb(41 49 43 / 12%);
+}
+
+.actions button:disabled,
+.small:disabled,
+.primary:disabled,
+.ghost:disabled,
+.options-grid button:disabled {
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.55;
 }
 
 .primary {
@@ -322,6 +359,12 @@ input {
   font-weight: 900;
   text-align: left;
   background: #ffffff;
+  cursor: pointer;
+  transition:
+    transform 120ms ease,
+    box-shadow 120ms ease,
+    filter 120ms ease,
+    border-color 120ms ease;
 }
 
 .options-grid button span {

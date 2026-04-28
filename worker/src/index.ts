@@ -161,6 +161,7 @@ export class GameRoom {
     }
 
     if (this.session?.questions.length) {
+      this.removeMockPlayers();
       return;
     }
 
@@ -178,10 +179,12 @@ export class GameRoom {
       players: existingSession?.players || [],
       answers: existingSession?.answers || []
     };
+    this.removeMockPlayers();
   }
 
   private ensureLobbySession(gameId: string): void {
     if (this.session) {
+      this.removeMockPlayers();
       return;
     }
 
@@ -301,7 +304,7 @@ export class GameRoom {
   }
 
   private start(): void {
-    if (!this.session || this.session.questions.length === 0) {
+    if (!this.session || this.session.questions.length === 0 || this.session.players.length === 0) {
       return;
     }
 
@@ -430,7 +433,7 @@ export class GameRoom {
 
     const responseTimeMs = Date.now() - this.session.questionStartedAt;
     const isCorrect = optionIndex === question.correctIndex;
-    const score = calculateScore(isCorrect, responseTimeMs, question.timeLimit);
+    const score = calculateScore(isCorrect);
     const answer: PlayerAnswer = {
       playerId,
       questionId: question.id,
@@ -452,6 +455,7 @@ export class GameRoom {
       return null;
     }
 
+    this.removeMockPlayers();
     const question = this.session.questions[this.session.currentQuestionIndex];
     return {
       gameId: this.session.gameId,
@@ -464,7 +468,7 @@ export class GameRoom {
       questionCount: this.session.questions.length,
       questionStartedAt: this.session.questionStartedAt,
       resultsShownAt: this.session.resultsShownAt,
-      currentQuestion: question ? publicQuestion(question, role) : null,
+      currentQuestion: question ? publicQuestion(question, role, this.session.phase) : null,
       answers: role === 'host' ? this.session.answers : undefined
     };
   }
@@ -510,12 +514,21 @@ export class GameRoom {
   }
 
   private broadcastState(): void {
+    this.removeMockPlayers();
     for (const [socket, meta] of this.sockets) {
       this.send(socket, {
         type: 'state',
         state: this.publicState(meta.role)
       });
     }
+  }
+
+  private removeMockPlayers(): void {
+    if (!this.session) {
+      return;
+    }
+
+    this.session.players = this.session.players.filter((player) => !isMockPlayer(player));
   }
 
   private send(socket: WebSocket, payload: unknown): void {
@@ -553,8 +566,8 @@ function readGameIdFromPath(pathname: string): string | null {
   return match?.[1] || null;
 }
 
-function publicQuestion(question: Question, role: ClientRole): PublicQuestion | Question {
-  if (role === 'host') {
+function publicQuestion(question: Question, role: ClientRole, phase: GamePhase): PublicQuestion | Question {
+  if (role === 'host' || phase === 'results' || phase === 'finished') {
     return question;
   }
 
@@ -581,14 +594,13 @@ function parseMessage(data: unknown): Record<string, unknown> | null {
   }
 }
 
-function calculateScore(isCorrect: boolean, responseTimeMs: number, timeLimitSeconds: number): number {
-  if (!isCorrect) {
-    return 0;
-  }
+function calculateScore(isCorrect: boolean): number {
+  return isCorrect ? 1 : 0;
+}
 
-  const timeLimitMs = timeLimitSeconds * 1000;
-  const speedRatio = Math.max(0, 1 - responseTimeMs / timeLimitMs);
-  return 1000 + Math.round(500 * speedRatio);
+function isMockPlayer(player: Player): boolean {
+  const mockNames = new Set(['ana', 'leo', 'mora']);
+  return mockNames.has(player.id.trim().toLowerCase()) || mockNames.has(player.name.trim().toLowerCase());
 }
 
 function errorMessage(error: unknown): string {

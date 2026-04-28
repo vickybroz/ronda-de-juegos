@@ -67,7 +67,7 @@
           </div>
 
           <div class="actions">
-            <button type="button" class="primary" [disabled]="state().phase !== 'lobby'" (click)="startGame()">
+            <button type="button" class="primary" [disabled]="state().phase !== 'lobby' || state().players.length === 0" (click)="startGame()">
               Iniciar
             </button>
             <button type="button" [disabled]="state().phase !== 'question'" (click)="showResults()">
@@ -184,7 +184,7 @@
           <article class="panel answer-summary">
             <p class="eyebrow">Pregunta actual</p>
             <h2>{{ resultQuestion.text }}</h2>
-            @if (viewMode() === 'host' && resultQuestion.correctIndex !== undefined) {
+            @if (resultQuestion.correctIndex !== undefined) {
               <p class="correct">Correcta: {{ resultQuestion.options[resultQuestion.correctIndex] }}</p>
             }
 
