@@ -1,0 +1,14 @@
+name = "trivia-worker"
+main = "src/index.ts"
+compatibility_date = "2026-04-27"
+
+[vars]
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbys-w2lJL0xjvdslAl4d0-y8YCinBrwjSW6LiKmCdNIEZMFIkkQMNMNgM_f47c-kO-X/exec"
+
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
