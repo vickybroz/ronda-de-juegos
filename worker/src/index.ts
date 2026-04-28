@@ -75,7 +75,7 @@ interface SocketMeta {
 }
 
 const DEFAULT_TITLE = 'Ronda de Juegos';
-const WORKER_VERSION = 'worker-v0.4.2-ebe43ad';
+const WORKER_VERSION = 'worker-v0.4.3-flow';
 const RESULT_DISPLAY_MS = 5000;
 
 export default {
