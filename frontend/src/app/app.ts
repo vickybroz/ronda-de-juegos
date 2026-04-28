@@ -1,5 +1,6 @@
 import { Component, computed, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { APP_VERSION } from './app-version';
 import { ConnectionStatus, GameClient } from './game-client';
 import { createInitialGameState } from './mock-game';
 import { GameState, Player } from './game.models';
@@ -11,7 +12,7 @@ import { GameState, Player } from './game.models';
   styleUrl: './app.scss'
 })
 export class App implements OnDestroy, OnInit {
-  protected readonly appVersion = 'front-v0.4.2-ebe43ad';
+  protected readonly appVersion = APP_VERSION;
   protected readonly hasGameRoute = signal(hasRouteGameId());
   protected readonly gameId = signal(readRouteGameId());
   protected readonly viewMode = signal<'host' | 'player'>(readHostPinFromRoute() ? 'host' : 'player');
