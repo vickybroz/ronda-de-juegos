@@ -113,6 +113,14 @@
               <span>{{ player()?.score }} pts</span>
             </div>
           </article>
+
+          @if (state().phase === 'lobby') {
+            <article class="panel waiting-panel">
+              <p class="eyebrow">Lobby</p>
+              <h2>Esperando al host</h2>
+              <p class="muted">La partida empieza cuando el host toca iniciar.</p>
+            </article>
+          }
         }
       </section>
     }

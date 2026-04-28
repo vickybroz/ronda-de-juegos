@@ -159,17 +159,18 @@ export class GameRoom {
       return;
     }
 
+    const existingSession = this.session;
     const loaded = await loadGameFromAppsScript(this.env.APPS_SCRIPT_URL, gameId, pin);
     this.session = {
       gameId,
       title: loaded.title || DEFAULT_TITLE,
       gameType: loaded.gameType || 'multiple_choice',
-      phase: 'lobby',
+      phase: existingSession?.phase || 'lobby',
       questions: loaded.questions || [],
-      currentQuestionIndex: 0,
-      questionStartedAt: null,
-      players: [],
-      answers: []
+      currentQuestionIndex: existingSession?.currentQuestionIndex || 0,
+      questionStartedAt: existingSession?.questionStartedAt || null,
+      players: existingSession?.players || [],
+      answers: existingSession?.answers || []
     };
   }
 
