@@ -3,7 +3,7 @@ import { FormsModule } from '@angular/forms';
 import { APP_VERSION } from './app-version';
 import { ConnectionStatus, GameClient } from './game-client';
 import { createInitialGameState } from './mock-game';
-import { GameState, Player } from './game.models';
+import { GameState, Invitation, Player } from './game.models';
 
 @Component({
   selector: 'app-root',
@@ -22,6 +22,9 @@ export class App implements OnDestroy, OnInit {
   protected readonly selectedOption = signal<number | null>(null);
   protected readonly now = signal(Date.now());
   protected readonly hostPin = signal(readHostPinFromRoute());
+  protected readonly inviteHash = signal(readInviteHashFromRoute());
+  protected readonly activeInviteHash = signal('');
+  protected readonly inviteStatus = signal('');
   protected readonly loadStatus = signal<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   protected readonly loadError = signal('');
   protected readonly connectionStatus = signal<ConnectionStatus>('idle');
@@ -87,9 +90,65 @@ export class App implements OnDestroy, OnInit {
 
   protected readonly hasAnswered = computed(() => this.selectedOption() !== null);
 
+  protected readonly invitationCode = computed(
+    () => this.activeInviteHash() || this.state().invitationHash || this.inviteHash()
+  );
+
+  protected readonly invitationConfirmed = computed(() => (this.state().invitationUses || 0) > 0);
+
+  protected readonly lobbyInvitations = computed<Invitation[]>(() => {
+    const invitations = this.state().invitations || [];
+    const activeHash = this.activeInviteHash();
+    const pendingInvitations = invitations.filter((invitation) => !invitation.usedByPlayerId);
+
+    if (activeHash && !invitations.some((invitation) => invitation.hash === activeHash)) {
+      return [...pendingInvitations, { hash: activeHash, createdAt: Date.now() }];
+    }
+
+    return pendingInvitations;
+  });
+
   protected joinAsPlayer(): void {
     const name = this.playerName().trim() || 'Jugador';
     this.client?.join(name);
+  }
+
+  protected readonly lobbyInviteUrl = computed(() => {
+    return this.buildLobbyInviteUrl(this.invitationCode());
+  });
+
+  protected async shareLobbyLink(): Promise<void> {
+    const code = await this.createFreshInvitation();
+    const url = this.buildLobbyInviteUrl(code);
+    const status = code ? `Codigo de invitacion ${code}` : 'Codigo de invitacion pendiente';
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: this.state().title,
+          text: 'Unite a la partida de Ronda de Juegos!',
+          url
+        });
+        this.inviteStatus.set(status);
+        return;
+      }
+
+      await this.copyLobbyLink();
+    } catch {
+      this.inviteStatus.set(status);
+    }
+  }
+
+  protected async copyLobbyLink(): Promise<void> {
+    const code = await this.createFreshInvitation();
+    const url = this.buildLobbyInviteUrl(code);
+
+    try {
+      await navigator.clipboard.writeText(url);
+      this.inviteStatus.set(code ? `Codigo de invitacion ${code}` : 'Link copiado');
+    } catch {
+      this.inviteStatus.set(url);
+    }
   }
 
   protected startGame(): void {
@@ -149,14 +208,55 @@ export class App implements OnDestroy, OnInit {
       gameId: this.gameId(),
       role: this.viewMode(),
       pin: this.hostPin(),
+      inviteHash: this.inviteHash(),
       onState: (state) => this.applyServerState(state),
       onJoined: (playerId) => {
         this.currentPlayerId.set(playerId || null);
         this.lastServerEvent.set(playerId ? `joined:${playerId.slice(0, 8)}` : 'left');
       },
+      onInvitation: (hash) => {
+        this.activeInviteHash.set(hash);
+        this.pendingInvitationResolver?.(hash);
+        this.pendingInvitationResolver = null;
+      },
       onStatus: (status) => this.applyConnectionStatus(status)
     });
     this.client.connect();
+  }
+
+  private pendingInvitationResolver: ((hash: string) => void) | null = null;
+
+  private createFreshInvitation(): Promise<string> {
+    if (this.viewMode() !== 'host' || this.connectionStatus() !== 'connected') {
+      return Promise.resolve(this.invitationCode());
+    }
+
+    return new Promise((resolve) => {
+      const fallback = window.setTimeout(() => {
+        if (this.pendingInvitationResolver) {
+          this.pendingInvitationResolver = null;
+          resolve(this.invitationCode());
+        }
+      }, 1200);
+
+      this.pendingInvitationResolver = (hash) => {
+        window.clearTimeout(fallback);
+        resolve(hash);
+      };
+
+      this.client?.createInvitation();
+    });
+  }
+
+  private buildLobbyInviteUrl(hash: string): string {
+    const path = `/${this.state().code || this.gameId()}`;
+    const url = new URL(path, shareableOrigin());
+
+    if (hash) {
+      url.searchParams.set('ci', hash);
+    }
+
+    return url.toString();
   }
 
   private applyServerState(serverState: GameState): void {
@@ -164,7 +264,11 @@ export class App implements OnDestroy, OnInit {
       ...createInitialGameState(this.gameId()),
       ...serverState,
       code: serverState.code || serverState.gameId || this.gameId(),
-      questions: serverState.currentQuestion ? [serverState.currentQuestion] : []
+      questions: serverState.questions?.length
+        ? serverState.questions
+        : serverState.currentQuestion
+          ? [serverState.currentQuestion]
+          : []
     } as GameState);
     this.lastServerEvent.set(`${serverState.phase} · ${serverState.players.length} jugador(es)`);
     this.loadStatus.set('loaded');
@@ -187,14 +291,13 @@ export class App implements OnDestroy, OnInit {
       return;
     }
 
-    if (status === 'error') {
-      if (this.viewMode() === 'host') {
-        redirectToDefaultPage();
-        return;
-      }
-
+    if (status === 'error' || status === 'closed') {
       this.loadStatus.set('error');
-      this.loadError.set('No se pudo conectar con la partida.');
+      this.loadError.set(
+        this.viewMode() === 'host'
+          ? 'No se pudo conectar con el worker. En local, levantalo con npm run dev dentro de worker.'
+          : 'No se pudo conectar con la partida.'
+      );
     }
   }
 }
@@ -210,6 +313,19 @@ function hasRouteGameId(): boolean {
 
 function readHostPinFromRoute(): string {
   return window.location.pathname.split('/').filter(Boolean)[1] || '';
+}
+
+function readInviteHashFromRoute(): string {
+  const searchParams = new URLSearchParams(window.location.search);
+  return searchParams.get('ci') || searchParams.get('invite') || '';
+}
+
+function shareableOrigin(): string {
+  if (window.location.hostname === 'localhost') {
+    return `${window.location.protocol}//127.0.0.1:${window.location.port}`;
+  }
+
+  return window.location.origin;
 }
 
 function redirectToDefaultPage(): void {

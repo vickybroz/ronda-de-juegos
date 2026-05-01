@@ -48,22 +48,37 @@
             </div>
           </div>
 
-          <div class="config-box">
-            @if (loadStatus() === 'loading') {
-              <p class="muted">Conectando con la partida...</p>
-            } @else if (loadStatus() === 'loaded') {
-              <p class="success">Partida lista desde la tab {{ gameId() }}.</p>
-            } @else if (loadStatus() === 'error') {
-              <p class="error">{{ loadError() }}</p>
-            }
-          </div>
-
-          <div class="qr-box">
-            <div class="qr-mock" aria-label="QR mock"></div>
-            <div>
-              <p class="join-url">/{{ state().code }}</p>
-              <p class="muted">El jugador entra a /{{ state().code }}. Esta vista usa /{{ state().code }}/PIN.</p>
+          @if (loadStatus() === 'loading' || loadStatus() === 'error') {
+            <div class="config-box">
+              @if (loadStatus() === 'loading') {
+                <p class="muted">Conectando con la partida...</p>
+              } @else if (loadStatus() === 'error') {
+                <p class="error">{{ loadError() }}</p>
+              }
             </div>
+          }
+
+          <div class="invite-box">
+            <div>
+              <p class="eyebrow">Invitacion</p>
+              @if (invitationCode()) {
+                <p class="join-url">{{ lobbyInviteUrl() }}</p>
+                <p class="muted">
+                  Codigo {{ invitationCode() }} · Usos {{ state().invitationUses || 0 }}
+                </p>
+              } @else {
+                <p class="muted">Genera un link cuando quieras invitar jugadores.</p>
+              }
+            </div>
+            <div class="invite-actions">
+              <button type="button" class="primary" (click)="shareLobbyLink()">Compartir</button>
+              <button type="button" class="primary icon-button" title="Copiar link" aria-label="Copiar link" (click)="copyLobbyLink()">
+                ⧉
+              </button>
+            </div>
+            @if (inviteStatus()) {
+              <p class="success">{{ inviteStatus() }}</p>
+            }
           </div>
 
           <div class="actions">
@@ -91,14 +106,62 @@
           </div>
 
           <div class="player-list">
+            @for (invitation of lobbyInvitations(); track invitation.hash) {
+              <div class="player-row invitation-row">
+                <span class="avatar">CI</span>
+                <div>
+                  <strong>Invitacion {{ invitation.hash }}</strong>
+                  <span>
+                    {{ invitation.usedByPlayerName ? 'Confirmada por ' + invitation.usedByPlayerName : 'Esperando uso del link' }}
+                  </span>
+                </div>
+              </div>
+            }
+
             @for (player of state().players; track trackPlayer($index, player)) {
               <div class="player-row">
                 <span class="avatar">{{ player.name.slice(0, 1).toUpperCase() }}</span>
                 <div>
                   <strong>{{ player.name }}</strong>
-                  <span>{{ player.connected === false ? 'Desconectado' : player.isReady ? 'Listo' : 'Esperando' }}</span>
+                  <span>
+                    {{ player.connected === false ? 'Desconectado' : player.isReady ? 'Listo' : 'Esperando' }}
+                    @if (player.invitationHash) {
+                      · invitacion {{ player.invitationHash }}
+                    }
+                  </span>
                 </div>
               </div>
+            }
+          </div>
+        </article>
+
+        <article class="panel questions-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Preguntas</p>
+              <h2>Contenido</h2>
+            </div>
+          </div>
+
+          <div class="question-list">
+            @for (question of state().questions; track question.id; let questionIndex = $index) {
+              <section class="question-card">
+                <div class="question-card-heading">
+                  <span class="question-number">{{ questionIndex + 1 }}</span>
+                  <strong>{{ question.text }}</strong>
+                </div>
+
+                <div class="option-list">
+                  @for (option of question.options; track option; let optionIndex = $index) {
+                    <span class="option-pill" [class.correct-option]="optionIndex === question.correctIndex">
+                      <b>{{ 'ABCD'[optionIndex] }}</b>
+                      {{ option }}
+                    </span>
+                  }
+                </div>
+              </section>
+            } @empty {
+              <p class="muted">Todavia no hay preguntas cargadas.</p>
             }
           </div>
         </article>

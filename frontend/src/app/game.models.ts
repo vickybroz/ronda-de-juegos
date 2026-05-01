@@ -6,6 +6,7 @@ export interface Player {
   score: number;
   isReady: boolean;
   connected?: boolean;
+  invitationHash?: string;
   lastAnswer?: PlayerAnswer;
 }
 
@@ -27,6 +28,13 @@ export interface PlayerAnswer {
   score: number;
 }
 
+export interface Invitation {
+  hash: string;
+  createdAt: number;
+  usedByPlayerId?: string;
+  usedByPlayerName?: string;
+}
+
 export interface GameState {
   gameId?: string;
   version?: string;
@@ -41,4 +49,7 @@ export interface GameState {
   questionCount?: number;
   currentQuestion?: Question | null;
   answers?: PlayerAnswer[];
+  invitationHash?: string;
+  invitationUses?: number;
+  invitations?: Invitation[];
 }

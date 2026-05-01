@@ -2,6 +2,36 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "dev: frontend + worker",
+      "dependsOrder": "parallel",
+      "dependsOn": ["worker: npm run dev", "frontend: npm start"],
+      "problemMatcher": []
+    },
+    {
+      "label": "worker: npm run dev",
+      "type": "shell",
+      "command": "npm",
+      "args": ["run", "dev"],
+      "options": {
+        "cwd": "${workspaceFolder}/worker"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "worker",
+        "pattern": {
+          "regexp": ".",
+          "file": 1,
+          "location": 2,
+          "message": 3
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*",
+          "endsPattern": ".*(Ready on|localhost:8787|127\\.0\\.0\\.1:8787).*"
+        }
+      }
+    },
+    {
       "label": "frontend: npm start",
       "type": "shell",
       "command": "npm",
@@ -16,7 +46,7 @@
         "background": {
           "activeOnStart": true,
           "beginsPattern": ".*",
-          "endsPattern": "Application bundle generation complete|bundle generation failed"
+          "endsPattern": "Application bundle generation complete|bundle generation failed|Local:.*localhost:4200|localhost:4200"
         }
       }
     }

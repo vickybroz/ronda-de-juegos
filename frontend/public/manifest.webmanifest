@@ -1,8 +1,8 @@
 {
   "name": "Trivia Beta",
   "short_name": "Trivia",
-  "theme_color": "#006d5b",
-  "background_color": "#f4f1ea",
+  "theme_color": "#36b99f",
+  "background_color": "#f7fbf7",
   "display": "standalone",
   "scope": "./",
   "start_url": "./",

@@ -31,6 +31,7 @@ interface Player {
   score: number;
   isReady: boolean;
   connected: boolean;
+  invitationHash?: string;
 }
 
 interface PlayerAnswer {
@@ -40,6 +41,13 @@ interface PlayerAnswer {
   isCorrect: boolean;
   responseTimeMs: number;
   score: number;
+}
+
+interface Invitation {
+  hash: string;
+  createdAt: number;
+  usedByPlayerId?: string;
+  usedByPlayerName?: string;
 }
 
 interface AppsScriptResponse {
@@ -63,6 +71,8 @@ interface SessionState {
   currentQuestionIndex: number;
   questionStartedAt: number | null;
   resultsShownAt: number | null;
+  invitationHash?: string;
+  invitations: Invitation[];
   players: Player[];
   answers: PlayerAnswer[];
 }
@@ -72,6 +82,7 @@ interface SocketMeta {
   playerId?: string;
   gameId: string;
   pin?: string;
+  inviteHash?: string;
 }
 
 const DEFAULT_TITLE = 'Ronda de Juegos';
@@ -118,6 +129,7 @@ export class GameRoom {
 
     const role = url.searchParams.get('role') === 'host' ? 'host' : 'player';
     const pin = url.searchParams.get('pin') || '';
+    const inviteHash = normalizeInviteHash(url.searchParams.get('ci') || url.searchParams.get('invite') || '');
     const gameId = readGameIdFromPath(url.pathname);
 
     if (!gameId) {
@@ -138,7 +150,7 @@ export class GameRoom {
     const [client, server] = Object.values(pair);
     server.accept();
 
-    this.sockets.set(server, { role, gameId, pin });
+    this.sockets.set(server, { role, gameId, pin, inviteHash });
     server.addEventListener('message', (event) => this.handleMessage(server, event));
     server.addEventListener('close', () => this.handleClose(server));
     server.addEventListener('error', () => this.handleClose(server));
@@ -161,6 +173,7 @@ export class GameRoom {
     }
 
     if (this.session?.questions.length) {
+      this.ensureInvitationHash();
       this.removeMockPlayers();
       return;
     }
@@ -176,14 +189,18 @@ export class GameRoom {
       currentQuestionIndex: existingSession?.currentQuestionIndex || 0,
       questionStartedAt: existingSession?.questionStartedAt || null,
       resultsShownAt: existingSession?.resultsShownAt || null,
+      invitationHash: existingSession?.invitationHash,
+      invitations: existingSession?.invitations || [],
       players: existingSession?.players || [],
       answers: existingSession?.answers || []
     };
+    this.ensureInvitationHash();
     this.removeMockPlayers();
   }
 
   private ensureLobbySession(gameId: string): void {
     if (this.session) {
+      this.ensureInvitationHash();
       this.removeMockPlayers();
       return;
     }
@@ -197,9 +214,11 @@ export class GameRoom {
       currentQuestionIndex: 0,
       questionStartedAt: null,
       resultsShownAt: null,
+      invitations: [],
       players: [],
       answers: []
     };
+    this.ensureInvitationHash();
   }
 
   private handleMessage(socket: WebSocket, event: MessageEvent): void {
@@ -246,6 +265,8 @@ export class GameRoom {
       this.reset();
     } else if (message.type === 'reload') {
       void this.reload(meta.gameId, meta.pin || '');
+    } else if (message.type === 'createInvitation') {
+      this.createInvitation(socket);
     }
   }
 
@@ -273,9 +294,29 @@ export class GameRoom {
       connected: true
     };
 
-    this.session.players = [...this.session.players, player];
     const previousMeta = this.sockets.get(socket);
-    this.sockets.set(socket, { role: 'player', playerId: player.id, gameId: previousMeta?.gameId || this.session.gameId });
+    const invitationHash =
+      previousMeta?.inviteHash &&
+      this.session.invitations.some((invitation) => invitation.hash === previousMeta.inviteHash)
+        ? previousMeta.inviteHash
+        : undefined;
+
+    if (invitationHash) {
+      player.invitationHash = invitationHash;
+      this.session.invitations = this.session.invitations.map((invitation) =>
+        invitation.hash === invitationHash
+          ? { ...invitation, usedByPlayerId: player.id, usedByPlayerName: player.name }
+          : invitation
+      );
+    }
+
+    this.session.players = [...this.session.players, player];
+    this.sockets.set(socket, {
+      role: 'player',
+      playerId: player.id,
+      gameId: previousMeta?.gameId || this.session.gameId,
+      inviteHash: previousMeta?.inviteHash
+    });
     this.send(socket, { type: 'joined', playerId: player.id });
     this.broadcastState();
   }
@@ -287,7 +328,7 @@ export class GameRoom {
     }
 
     this.session.players = this.session.players.filter((player) => player.id !== meta.playerId);
-    this.sockets.set(socket, { role: 'player', gameId: meta.gameId });
+    this.sockets.set(socket, { role: 'player', gameId: meta.gameId, inviteHash: meta.inviteHash });
     this.send(socket, { type: 'left' });
     this.broadcastState();
   }
@@ -390,12 +431,14 @@ export class GameRoom {
         gameType: loaded.gameType || 'multiple_choice',
         phase: 'lobby',
         questions: loaded.questions || [],
-        currentQuestionIndex: 0,
-        questionStartedAt: null,
-        resultsShownAt: null,
-        players: [],
-        answers: []
-      };
+      currentQuestionIndex: 0,
+      questionStartedAt: null,
+      resultsShownAt: null,
+      invitations: [],
+      players: [],
+      answers: []
+    };
+      this.ensureInvitationHash();
 
       for (const [socket, meta] of this.sockets) {
         if (meta.role === 'player') {
@@ -455,6 +498,7 @@ export class GameRoom {
       return null;
     }
 
+    this.ensureInvitationHash();
     this.removeMockPlayers();
     const question = this.session.questions[this.session.currentQuestionIndex];
     return {
@@ -464,10 +508,16 @@ export class GameRoom {
       gameType: this.session.gameType,
       phase: this.session.phase,
       players: this.session.players,
+      questions: role === 'host' ? this.session.questions : undefined,
       currentQuestionIndex: this.session.currentQuestionIndex,
       questionCount: this.session.questions.length,
       questionStartedAt: this.session.questionStartedAt,
       resultsShownAt: this.session.resultsShownAt,
+      invitationHash: this.session.invitationHash,
+      invitationUses: this.session.invitationHash
+        ? this.session.players.filter((player) => player.invitationHash === this.session?.invitationHash).length
+        : 0,
+      invitations: this.session.invitations,
       currentQuestion: question ? publicQuestion(question, role, this.session.phase) : null,
       answers: role === 'host' ? this.session.answers : undefined
     };
@@ -531,6 +581,39 @@ export class GameRoom {
     this.session.players = this.session.players.filter((player) => !isMockPlayer(player));
   }
 
+  private ensureInvitationHash(): void {
+    if (this.session && !this.session.invitations) {
+      this.session.invitations = [];
+    }
+
+    if (
+      this.session &&
+      this.session.invitationHash &&
+      !this.session.invitations.some((invitation) => invitation.hash === this.session?.invitationHash)
+    ) {
+      this.session.invitations = [
+        ...this.session.invitations,
+        { hash: this.session.invitationHash, createdAt: Date.now() }
+      ];
+    }
+  }
+
+  private createInvitation(socket: WebSocket): void {
+    if (!this.session) {
+      return;
+    }
+
+    const invitation = {
+      hash: createInvitationHash(),
+      createdAt: Date.now()
+    };
+
+    this.session.invitationHash = invitation.hash;
+    this.session.invitations = [...this.session.invitations, invitation];
+    this.send(socket, { type: 'invitation', hash: invitation.hash });
+    this.broadcastState();
+  }
+
   private send(socket: WebSocket, payload: unknown): void {
     try {
       socket.send(JSON.stringify(payload));
@@ -564,6 +647,14 @@ async function loadGameFromAppsScript(appsScriptUrl: string, gameId: string, pin
 function readGameIdFromPath(pathname: string): string | null {
   const match = pathname.match(/^\/rooms\/([a-z0-9-]+)\/ws$/);
   return match?.[1] || null;
+}
+
+function createInvitationHash(): string {
+  return crypto.randomUUID().replace(/-/g, '').slice(0, 10);
+}
+
+function normalizeInviteHash(hash: string): string {
+  return hash.trim().toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 32);
 }
 
 function publicQuestion(question: Question, role: ClientRole, phase: GamePhase): PublicQuestion | Question {

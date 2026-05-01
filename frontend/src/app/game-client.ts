@@ -1,4 +1,5 @@
 import { GameState } from './game.models';
+import { environment } from '../environments/environment';
 
 export type ClientRole = 'host' | 'player';
 
@@ -6,14 +7,16 @@ export interface GameClientOptions {
   gameId: string;
   role: ClientRole;
   pin?: string;
+  inviteHash?: string;
   onState: (state: GameState) => void;
   onJoined: (playerId: string) => void;
+  onInvitation: (hash: string) => void;
   onStatus: (status: ConnectionStatus) => void;
 }
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'closed';
 
-const WORKER_WS_URL = 'wss://ronda-de-juegos-worker.vickybroz.workers.dev';
+const WORKER_WS_URL = environment.workerWsUrl;
 
 export class GameClient {
   private socket: WebSocket | null = null;
@@ -29,6 +32,10 @@ export class GameClient {
 
     if (this.options.pin) {
       url.searchParams.set('pin', this.options.pin);
+    }
+
+    if (this.options.inviteHash) {
+      url.searchParams.set('ci', this.options.inviteHash);
     }
 
     this.socket = new WebSocket(url.toString());
@@ -76,6 +83,10 @@ export class GameClient {
     this.send({ type: 'reload' });
   }
 
+  createInvitation(): void {
+    this.send({ type: 'createInvitation' });
+  }
+
   leave(): void {
     this.send({ type: 'leave' });
   }
@@ -103,6 +114,10 @@ export class GameClient {
 
     if (payload?.['type'] === 'left') {
       this.options.onJoined('');
+    }
+
+    if (payload?.['type'] === 'invitation' && typeof payload['hash'] === 'string') {
+      this.options.onInvitation(payload['hash']);
     }
   }
 }
