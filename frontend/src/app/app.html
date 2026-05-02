@@ -1,9 +1,21 @@
 <main class="app-shell">
-  @if (!hasGameRoute()) {
+  @if (!hasGameRoute() || routeStatus() === 'invalid') {
     <section class="empty-route">
       <p class="eyebrow">Ronda de Juegos</p>
       <h1>Nada por aqui</h1>
       <p class="muted">Entra con el link de una partida, por ejemplo /cumple-abril.</p>
+    </section>
+  } @else if (routeStatus() === 'validating') {
+    <section class="empty-route">
+      <p class="eyebrow">Ronda de Juegos</p>
+      <h1>Cargando sala</h1>
+      <p class="muted">Validando la partida...</p>
+    </section>
+  } @else if (routeStatus() === 'error') {
+    <section class="empty-route">
+      <p class="eyebrow">Ronda de Juegos</p>
+      <h1>No se pudo cargar</h1>
+      <p class="muted">{{ loadError() }}</p>
     </section>
   } @else {
     <section class="topbar">
@@ -43,7 +55,6 @@
               <h2>Control de partida</h2>
             </div>
             <div class="header-actions">
-              <button type="button" class="ghost" (click)="resetGame()">Reset puntos</button>
               <button type="button" class="ghost" (click)="reloadGame()">Recargar partida</button>
             </div>
           </div>
@@ -101,7 +112,10 @@
           <div class="panel-heading">
             <div>
               <p class="eyebrow">Jugadores</p>
-              <h2>Lobby</h2>
+              <h2>{{ playerPanelTitle() }}</h2>
+            </div>
+            <div class="header-actions">
+              <button type="button" class="ghost" [disabled]="!hasScoresToReset()" (click)="resetGame()">Reset puntos</button>
             </div>
           </div>
 
@@ -124,7 +138,21 @@
                 <div>
                   <strong>{{ player.name }}</strong>
                   <span>
-                    {{ player.connected === false ? 'Desconectado' : player.isReady ? 'Listo' : 'Esperando' }}
+                    {{ player.score }} pts
+                    @if (currentPlayerAnswerState(player.id); as answerState) {
+                      ·
+                      <span class="answer-state" [class.answered]="answerState === 'answered'" [class.waiting]="answerState === 'waiting'" [class.missed]="answerState === 'missed'">
+                        @if (answerState === 'answered') {
+                          <span class="answer-icon check" aria-label="Respondio"></span>
+                        } @else if (answerState === 'waiting') {
+                          <span class="answer-icon clock" aria-label="Esperando"></span>
+                        } @else {
+                          <span class="answer-icon zzz" aria-label="No respondio">ZZZ</span>
+                        }
+                      </span>
+                    } @else {
+                      · {{ player.connected === false ? 'Desconectado' : player.isReady ? 'Listo' : 'Esperando' }}
+                    }
                     @if (player.invitationHash) {
                       · invitacion {{ player.invitationHash }}
                     }
@@ -135,36 +163,6 @@
           </div>
         </article>
 
-        <article class="panel questions-panel">
-          <div class="panel-heading">
-            <div>
-              <p class="eyebrow">Preguntas</p>
-              <h2>Contenido</h2>
-            </div>
-          </div>
-
-          <div class="question-list">
-            @for (question of state().questions; track question.id; let questionIndex = $index) {
-              <section class="question-card">
-                <div class="question-card-heading">
-                  <span class="question-number">{{ questionIndex + 1 }}</span>
-                  <strong>{{ question.text }}</strong>
-                </div>
-
-                <div class="option-list">
-                  @for (option of question.options; track option; let optionIndex = $index) {
-                    <span class="option-pill" [class.correct-option]="optionIndex === question.correctIndex">
-                      <b>{{ 'ABCD'[optionIndex] }}</b>
-                      {{ option }}
-                    </span>
-                  }
-                </div>
-              </section>
-            } @empty {
-              <p class="muted">Todavia no hay preguntas cargadas.</p>
-            }
-          </div>
-        </article>
       </section>
     } @else {
       <section class="workspace player-workspace">
@@ -226,6 +224,42 @@
       </section>
     }
 
+    @if (viewMode() === 'host') {
+      <article class="panel questions-panel">
+        <div class="panel-heading">
+          <div>
+            <p class="eyebrow">Preguntas</p>
+            <h2>Contenido</h2>
+          </div>
+        </div>
+
+        <div class="question-list">
+          @for (question of state().questions; track question.id; let questionIndex = $index) {
+            <section class="question-card">
+              <div class="question-card-heading">
+                <span class="question-number">{{ questionIndex + 1 }}</span>
+                <div>
+                  <strong>{{ question.text }}</strong>
+                  <span class="question-points">{{ question.points || 1 }} pts</span>
+                </div>
+              </div>
+
+              <div class="option-list">
+                @for (option of question.options; track option; let optionIndex = $index) {
+                  <span class="option-pill" [class.correct-option]="optionIndex === question.correctIndex">
+                    <b>{{ 'ABCD'[optionIndex] }}</b>
+                    {{ option }}
+                  </span>
+                }
+              </div>
+            </section>
+          } @empty {
+            <p class="muted">Todavia no hay preguntas cargadas.</p>
+          }
+        </div>
+      </article>
+    }
+
     @if (state().phase === 'results' || state().phase === 'finished') {
       <section class="workspace results-grid">
         <article class="panel">
@@ -243,7 +277,7 @@
           </div>
         </article>
 
-        @if (currentQuestion(); as resultQuestion) {
+        @if (state().phase !== 'finished' && currentQuestion(); as resultQuestion) {
           <article class="panel answer-summary">
             <p class="eyebrow">Pregunta actual</p>
             <h2>{{ resultQuestion.text }}</h2>

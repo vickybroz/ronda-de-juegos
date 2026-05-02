@@ -20,10 +20,12 @@ A4 game_type    B4 multiple_choice
 Headers en fila 6:
 
 ```txt
-pregunta | opcion_a | opcion_b | opcion_c | opcion_d | correcta | tiempo | categoria | dificultad
+pregunta | opcion_a | opcion_b | opcion_c | opcion_d | correcta | tiempo | puntos | categoria | dificultad
 ```
 
 Preguntas desde fila 7.
+
+Si `B1 game_id` esta vacio, la sala queda deshabilitada y no se puede entrar.
 
 ## Deploy
 

@@ -1,7 +1,7 @@
 import { Component, computed, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { APP_VERSION } from './app-version';
-import { ConnectionStatus, GameClient } from './game-client';
+import { ConnectionStatus, GameClient, validateRoom } from './game-client';
 import { createInitialGameState } from './mock-game';
 import { GameState, Invitation, Player } from './game.models';
 
@@ -25,6 +25,9 @@ export class App implements OnDestroy, OnInit {
   protected readonly inviteHash = signal(readInviteHashFromRoute());
   protected readonly activeInviteHash = signal('');
   protected readonly inviteStatus = signal('');
+  protected readonly routeStatus = signal<'validating' | 'valid' | 'invalid' | 'error'>(
+    hasRouteGameId() ? 'validating' : 'invalid'
+  );
   protected readonly loadStatus = signal<'idle' | 'loading' | 'loaded' | 'error'>('idle');
   protected readonly loadError = signal('');
   protected readonly connectionStatus = signal<ConnectionStatus>('idle');
@@ -45,7 +48,12 @@ export class App implements OnDestroy, OnInit {
       return;
     }
 
-    this.connect();
+    if (this.viewMode() === 'player' && !this.inviteHash()) {
+      redirectToDefaultPage();
+      return;
+    }
+
+    void this.validateAndConnect();
   }
 
   ngOnDestroy(): void {
@@ -66,7 +74,46 @@ export class App implements OnDestroy, OnInit {
 
   protected readonly readyCount = computed(() => this.state().players.filter((player) => player.isReady).length);
 
+  protected readonly hasScoresToReset = computed(() => this.state().players.some((player) => player.score > 0));
+
   protected readonly questionCount = computed(() => this.state().questionCount ?? this.state().questions.length);
+
+  protected readonly playerPanelTitle = computed(() => (this.state().phase === 'lobby' ? 'Lobby' : 'Ronda'));
+
+  protected readonly currentAnsweredPlayerIds = computed(() => {
+    const question = this.currentQuestion();
+
+    if (!question) {
+      return new Set<string>();
+    }
+
+    return new Set(
+      (this.state().answers || [])
+        .filter((answer) => answer.questionId === question.id)
+        .map((answer) => answer.playerId)
+        .filter((playerId): playerId is string => Boolean(playerId))
+    );
+  });
+
+  protected hasPlayerAnsweredCurrent(playerId: string): boolean {
+    return this.currentAnsweredPlayerIds().has(playerId);
+  }
+
+  protected currentPlayerAnswerState(playerId: string): 'answered' | 'waiting' | 'missed' | null {
+    if (!this.currentQuestion()) {
+      return null;
+    }
+
+    if (this.state().phase === 'question') {
+      return this.hasPlayerAnsweredCurrent(playerId) ? 'answered' : 'waiting';
+    }
+
+    if (this.state().phase === 'results') {
+      return this.hasPlayerAnsweredCurrent(playerId) ? 'answered' : 'missed';
+    }
+
+    return null;
+  }
 
   protected readonly timeLeft = computed(() => {
     const state = this.state();
@@ -222,6 +269,41 @@ export class App implements OnDestroy, OnInit {
       onStatus: (status) => this.applyConnectionStatus(status)
     });
     this.client.connect();
+  }
+
+  private async validateAndConnect(): Promise<void> {
+    this.loadStatus.set('loading');
+    this.loadError.set('');
+
+    try {
+      const validation = await validateRoom(this.gameId(), this.viewMode(), this.hostPin(), this.inviteHash());
+
+      if (!validation.ok) {
+        if (
+          validation.status === 404 ||
+          validation.error === 'GAME_NOT_FOUND' ||
+          validation.error === 'GAME_DISABLED' ||
+          validation.error === 'INVALID_INVITATION' ||
+          validation.error === 'INVITATION_REQUIRED'
+        ) {
+          this.routeStatus.set('invalid');
+          redirectToDefaultPage();
+          return;
+        }
+
+        this.routeStatus.set('error');
+        this.loadStatus.set('error');
+        this.loadError.set(validation.error || 'No se pudo validar la sala.');
+        return;
+      }
+
+      this.routeStatus.set('valid');
+      this.connect();
+    } catch {
+      this.routeStatus.set('error');
+      this.loadStatus.set('error');
+      this.loadError.set('No se pudo validar la sala contra el worker.');
+    }
   }
 
   private pendingInvitationResolver: ((hash: string) => void) | null = null;

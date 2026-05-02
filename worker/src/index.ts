@@ -12,6 +12,7 @@ interface Question {
   options: string[];
   correctIndex: number;
   timeLimit: number;
+  points: number;
   category?: string;
   difficulty?: string;
 }
@@ -21,6 +22,7 @@ interface PublicQuestion {
   text: string;
   options: string[];
   timeLimit: number;
+  points: number;
   category?: string;
   difficulty?: string;
 }
@@ -75,6 +77,7 @@ interface SessionState {
   invitations: Invitation[];
   players: Player[];
   answers: PlayerAnswer[];
+  scoredQuestionIds: string[];
 }
 
 interface SocketMeta {
@@ -97,7 +100,7 @@ export default {
       return corsResponse(null, { status: 204 });
     }
 
-    const match = url.pathname.match(/^\/rooms\/([a-z0-9-]+)\/ws$/);
+    const match = url.pathname.match(/^\/rooms\/([a-z0-9-]+)(?:\/ws)?$/);
     if (!match) {
       return jsonResponse({ ok: true, service: 'trivia-worker' });
     }
@@ -122,11 +125,6 @@ export class GameRoom {
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
-
-    if (request.headers.get('Upgrade') !== 'websocket') {
-      return jsonResponse({ ok: false, error: 'WEBSOCKET_REQUIRED' }, { status: 426 });
-    }
-
     const role = url.searchParams.get('role') === 'host' ? 'host' : 'player';
     const pin = url.searchParams.get('pin') || '';
     const inviteHash = normalizeInviteHash(url.searchParams.get('ci') || url.searchParams.get('invite') || '');
@@ -136,6 +134,32 @@ export class GameRoom {
       return jsonResponse({ ok: false, error: 'MISSING_GAME_ID' }, { status: 400 });
     }
 
+    if (request.headers.get('Upgrade') !== 'websocket') {
+      try {
+        if (role === 'host') {
+          await this.ensureHostSession(gameId, pin);
+        } else {
+          if (!inviteHash) {
+            return jsonResponse({ ok: false, error: 'INVITATION_REQUIRED' }, { status: 403 });
+          }
+
+          await this.ensureLobbySession(gameId);
+          if (!this.isValidInvitation(inviteHash)) {
+            return jsonResponse({ ok: false, error: 'INVALID_INVITATION' }, { status: 404 });
+          }
+        }
+
+        return jsonResponse({
+          ok: true,
+          state: this.publicState(role)
+        });
+      } catch (error) {
+        const message = errorMessage(error);
+        const status = message === 'GAME_NOT_FOUND' || message === 'GAME_DISABLED' ? 404 : 403;
+        return jsonResponse({ ok: false, error: message }, { status });
+      }
+    }
+
     if (role === 'host') {
       try {
         await this.ensureHostSession(gameId, pin);
@@ -143,7 +167,18 @@ export class GameRoom {
         return jsonResponse({ ok: false, error: errorMessage(error) }, { status: 403 });
       }
     } else {
-      this.ensureLobbySession(gameId);
+      if (!inviteHash) {
+        return jsonResponse({ ok: false, error: 'INVITATION_REQUIRED' }, { status: 403 });
+      }
+
+      try {
+        await this.ensureLobbySession(gameId);
+        if (!this.isValidInvitation(inviteHash)) {
+          return jsonResponse({ ok: false, error: 'INVALID_INVITATION' }, { status: 404 });
+        }
+      } catch (error) {
+        return jsonResponse({ ok: false, error: errorMessage(error) }, { status: 404 });
+      }
     }
 
     const pair = new WebSocketPair();
@@ -192,23 +227,25 @@ export class GameRoom {
       invitationHash: existingSession?.invitationHash,
       invitations: existingSession?.invitations || [],
       players: existingSession?.players || [],
-      answers: existingSession?.answers || []
+      answers: existingSession?.answers || [],
+      scoredQuestionIds: existingSession?.scoredQuestionIds || []
     };
     this.ensureInvitationHash();
     this.removeMockPlayers();
   }
 
-  private ensureLobbySession(gameId: string): void {
+  private async ensureLobbySession(gameId: string): Promise<void> {
     if (this.session) {
       this.ensureInvitationHash();
       this.removeMockPlayers();
       return;
     }
 
+    const loaded = await loadGameMetadataFromAppsScript(this.env.APPS_SCRIPT_URL, gameId);
     this.session = {
       gameId,
-      title: DEFAULT_TITLE,
-      gameType: 'multiple_choice',
+      title: loaded.title || DEFAULT_TITLE,
+      gameType: loaded.gameType || 'multiple_choice',
       phase: 'lobby',
       questions: [],
       currentQuestionIndex: 0,
@@ -216,7 +253,8 @@ export class GameRoom {
       resultsShownAt: null,
       invitations: [],
       players: [],
-      answers: []
+      answers: [],
+      scoredQuestionIds: []
     };
     this.ensureInvitationHash();
   }
@@ -275,7 +313,9 @@ export class GameRoom {
     this.sockets.delete(socket);
 
     if (meta?.playerId && this.session) {
-      this.session.players = this.session.players.filter((player) => player.id !== meta.playerId);
+      this.session.players = this.session.players.map((player) =>
+        player.id === meta.playerId ? { ...player, connected: false } : player
+      );
       this.broadcastState();
     }
   }
@@ -300,6 +340,27 @@ export class GameRoom {
       this.session.invitations.some((invitation) => invitation.hash === previousMeta.inviteHash)
         ? previousMeta.inviteHash
         : undefined;
+
+    if (!invitationHash) {
+      this.send(socket, { type: 'error', error: 'INVITATION_REQUIRED' });
+      return;
+    }
+
+    const existingPlayer = this.session.players.find((player) => player.invitationHash === invitationHash);
+    if (existingPlayer) {
+      this.session.players = this.session.players.map((player) =>
+        player.id === existingPlayer.id ? { ...player, name, isReady: true, connected: true } : player
+      );
+      this.sockets.set(socket, {
+        role: 'player',
+        playerId: existingPlayer.id,
+        gameId: previousMeta?.gameId || this.session.gameId,
+        inviteHash: previousMeta?.inviteHash
+      });
+      this.send(socket, { type: 'joined', playerId: existingPlayer.id });
+      this.broadcastState();
+      return;
+    }
 
     if (invitationHash) {
       player.invitationHash = invitationHash;
@@ -354,6 +415,7 @@ export class GameRoom {
     this.session.questionStartedAt = Date.now();
     this.session.resultsShownAt = null;
     this.session.answers = [];
+    this.session.scoredQuestionIds = [];
     this.broadcastState();
     this.scheduleQuestionTimeout();
   }
@@ -365,6 +427,7 @@ export class GameRoom {
 
     this.session.phase = 'results';
     this.session.resultsShownAt = Date.now();
+    this.applyCurrentQuestionScores();
     this.broadcastState();
     this.scheduleNextQuestion();
   }
@@ -414,7 +477,18 @@ export class GameRoom {
     this.session.questionStartedAt = null;
     this.session.resultsShownAt = null;
     this.session.answers = [];
-    this.session.players = this.session.players.map((player) => ({ ...player, score: 0, isReady: false }));
+    this.session.scoredQuestionIds = [];
+    this.session.invitationHash = undefined;
+    this.session.invitations = [];
+    this.session.players = [];
+
+    for (const [socket, meta] of this.sockets) {
+      if (meta.role === 'player') {
+        this.sockets.set(socket, { role: 'player', gameId: meta.gameId, inviteHash: meta.inviteHash });
+        this.send(socket, { type: 'left' });
+      }
+    }
+
     this.broadcastState();
   }
 
@@ -436,7 +510,8 @@ export class GameRoom {
       resultsShownAt: null,
       invitations: [],
       players: [],
-      answers: []
+      answers: [],
+      scoredQuestionIds: []
     };
       this.ensureInvitationHash();
 
@@ -476,7 +551,7 @@ export class GameRoom {
 
     const responseTimeMs = Date.now() - this.session.questionStartedAt;
     const isCorrect = optionIndex === question.correctIndex;
-    const score = calculateScore(isCorrect);
+    const score = calculateScore(isCorrect, question.points);
     const answer: PlayerAnswer = {
       playerId,
       questionId: question.id,
@@ -487,10 +562,31 @@ export class GameRoom {
     };
 
     this.session.answers = [...this.session.answers, answer];
-    this.session.players = this.session.players.map((player) =>
-      player.id === playerId ? { ...player, score: player.score + score } : player
-    );
     this.broadcastState();
+  }
+
+  private applyCurrentQuestionScores(): void {
+    if (!this.session) {
+      return;
+    }
+
+    const question = this.session.questions[this.session.currentQuestionIndex];
+    if (!question || this.session.scoredQuestionIds.includes(question.id)) {
+      return;
+    }
+
+    const scoresByPlayer = new Map<string, number>();
+    for (const answer of this.session.answers) {
+      if (answer.questionId === question.id) {
+        scoresByPlayer.set(answer.playerId, (scoresByPlayer.get(answer.playerId) || 0) + answer.score);
+      }
+    }
+
+    this.session.players = this.session.players.map((player) => ({
+      ...player,
+      score: player.score + (scoresByPlayer.get(player.id) || 0)
+    }));
+    this.session.scoredQuestionIds = [...this.session.scoredQuestionIds, question.id];
   }
 
   private publicState(role: ClientRole): unknown {
@@ -614,6 +710,12 @@ export class GameRoom {
     this.broadcastState();
   }
 
+  private isValidInvitation(inviteHash: string): boolean {
+    return Boolean(
+      this.session?.invitations.some((invitation) => invitation.hash === inviteHash)
+    );
+  }
+
   private send(socket: WebSocket, payload: unknown): void {
     try {
       socket.send(JSON.stringify(payload));
@@ -644,8 +746,24 @@ async function loadGameFromAppsScript(appsScriptUrl: string, gameId: string, pin
   return payload;
 }
 
+async function loadGameMetadataFromAppsScript(appsScriptUrl: string, gameId: string): Promise<AppsScriptResponse> {
+  const url = new URL(appsScriptUrl);
+  url.searchParams.set('gameId', gameId);
+
+  const response = await fetch(url.toString(), {
+    redirect: 'follow'
+  });
+  const payload = (await response.json()) as AppsScriptResponse;
+
+  if (!payload.ok) {
+    throw new Error(payload.message || payload.error || 'GAME_NOT_FOUND');
+  }
+
+  return payload;
+}
+
 function readGameIdFromPath(pathname: string): string | null {
-  const match = pathname.match(/^\/rooms\/([a-z0-9-]+)\/ws$/);
+  const match = pathname.match(/^\/rooms\/([a-z0-9-]+)(?:\/ws)?$/);
   return match?.[1] || null;
 }
 
@@ -667,6 +785,7 @@ function publicQuestion(question: Question, role: ClientRole, phase: GamePhase):
     text: question.text,
     options: question.options,
     timeLimit: question.timeLimit,
+    points: question.points,
     category: question.category,
     difficulty: question.difficulty
   };
@@ -685,8 +804,8 @@ function parseMessage(data: unknown): Record<string, unknown> | null {
   }
 }
 
-function calculateScore(isCorrect: boolean): number {
-  return isCorrect ? 1 : 0;
+function calculateScore(isCorrect: boolean, points: number): number {
+  return isCorrect ? Math.max(1, Math.round(points || 1)) : 0;
 }
 
 function isMockPlayer(player: Player): boolean {

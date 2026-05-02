@@ -26,6 +26,10 @@ function doGet(event) {
     }
 
     const config = readConfig(sheet);
+    if (config.sheetGameId !== gameId) {
+      return jsonResponse({ error: 'GAME_DISABLED', message: 'Game tab is disabled or game_id does not match.' }, 404, params.callback);
+    }
+
     const isHostRequest = pin.length > 0;
 
     if (isHostRequest && pin !== config.hostPin) {
@@ -42,10 +46,23 @@ function doGet(event) {
       questions
     }, 200, params.callback);
   } catch (error) {
+    const message = String(error && error.message ? error.message : error);
+
+    if (message === 'GAME_DISABLED') {
+      return jsonResponse(
+        {
+          error: 'GAME_DISABLED',
+          message: 'Game tab is disabled.'
+        },
+        404,
+        params.callback
+      );
+    }
+
     return jsonResponse(
       {
         error: 'SERVER_ERROR',
-        message: String(error && error.message ? error.message : error)
+        message
       },
       500,
       params.callback
@@ -58,6 +75,10 @@ function readConfig(sheet) {
   const title = String(sheet.getRange('B2').getValue() || '').trim();
   const hostPin = String(sheet.getRange('B3').getValue() || '').trim();
   const gameType = String(sheet.getRange('B4').getValue() || 'multiple_choice').trim();
+
+  if (!sheetGameId) {
+    throw new Error('GAME_DISABLED');
+  }
 
   if (!title) {
     throw new Error('Missing title in B2.');
@@ -87,7 +108,7 @@ function readQuestions(sheet) {
   }
 
   const rowCount = lastRow - FIRST_QUESTION_ROW + 1;
-  const rows = sheet.getRange(FIRST_QUESTION_ROW, 1, rowCount, 9).getValues();
+  const rows = sheet.getRange(FIRST_QUESTION_ROW, 1, rowCount, 10).getValues();
   const questions = [];
 
   rows.forEach(function (row, index) {
@@ -110,8 +131,9 @@ function readQuestions(sheet) {
 
     const correctIndex = parseCorrectIndex(row[5], options.length, FIRST_QUESTION_ROW + index);
     const timeLimit = parseTimeLimit(row[6]);
-    const category = String(row[7] || '').trim();
-    const difficulty = String(row[8] || '').trim();
+    const points = parsePoints(row[7]);
+    const category = String(row[8] || '').trim();
+    const difficulty = String(row[9] || '').trim();
 
     questions.push({
       id: 'q' + (questions.length + 1),
@@ -119,6 +141,7 @@ function readQuestions(sheet) {
       options,
       correctIndex,
       timeLimit,
+      points,
       category,
       difficulty
     });
@@ -147,6 +170,16 @@ function parseTimeLimit(value) {
 
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return DEFAULT_TIME_LIMIT;
+  }
+
+  return Math.round(parsed);
+}
+
+function parsePoints(value) {
+  const parsed = Number(value || 1);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 1;
   }
 
   return Math.round(parsed);

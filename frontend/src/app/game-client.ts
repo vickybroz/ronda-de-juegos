@@ -16,7 +16,41 @@ export interface GameClientOptions {
 
 export type ConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error' | 'closed';
 
+const WORKER_HTTP_URL = environment.workerHttpUrl;
 const WORKER_WS_URL = environment.workerWsUrl;
+
+export interface RoomValidationResult {
+  ok: boolean;
+  status: number;
+  error?: string;
+}
+
+export async function validateRoom(
+  gameId: string,
+  role: ClientRole,
+  pin?: string,
+  inviteHash?: string
+): Promise<RoomValidationResult> {
+  const url = new URL(`/rooms/${gameId}`, WORKER_HTTP_URL);
+  url.searchParams.set('role', role);
+
+  if (pin) {
+    url.searchParams.set('pin', pin);
+  }
+
+  if (inviteHash) {
+    url.searchParams.set('ci', inviteHash);
+  }
+
+  const response = await fetch(url.toString());
+  const payload = (await response.json()) as Partial<RoomValidationResult>;
+
+  return {
+    ok: response.ok && payload.ok !== false,
+    status: response.status,
+    error: payload.error
+  };
+}
 
 export class GameClient {
   private socket: WebSocket | null = null;

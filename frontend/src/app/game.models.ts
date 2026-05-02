@@ -16,11 +16,13 @@ export interface Question {
   options: string[];
   correctIndex?: number;
   timeLimit: number;
+  points: number;
   category?: string;
   difficulty?: string;
 }
 
 export interface PlayerAnswer {
+  playerId?: string;
   questionId: string;
   optionIndex: number;
   isCorrect: boolean;
